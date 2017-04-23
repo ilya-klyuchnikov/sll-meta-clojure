@@ -1,7 +1,12 @@
-(ns sll.parse-test
+(ns sll.tests
   (:require [clojure.test :refer :all]
             [sll.data :refer :all]
             [sll.parse :refer :all]))
+
+(deftest prefix-test
+  (is (prefix? '() '()))
+  (is (prefix? '(2 1) '(3 2 1)))
+  (is (not (prefix? '(3 2 1) '(2 1)))))
 
 (deftest parse-test
   (is (= (parse-expr 'a) (->Var 'a)))
