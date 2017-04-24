@@ -15,6 +15,12 @@
   (is (thrown? AssertionError (parse-expr '())))
   (is (= (parse-expr '(f-f)) (->FCall 'f-f (list)))))
 
+(deftest vnames-test
+  (is (= (vnames (parse-expr 'a)) '(a)))
+  (is (= (vnames (parse-expr ''a)) '()))
+  (is (= (vnames (parse-expr '(Ctr a b c))) '(a b c)))
+  (is (= (vnames (parse-expr '(Ctr a b (Ctr a b)))) '(a b a b))))
+
 (def s-prog
   '(
      ((f-main xs ys) = (g-append xs ys))
@@ -53,3 +59,13 @@
 
 (def prog
   (parse-program s-prog))
+
+(defn s-renaming [s-exp1 s-exp2]
+  (renaming (parse-expr s-exp1) (parse-expr s-exp2)))
+
+(deftest renaming-test
+  (is (= (s-renaming 'a 'b) {'a 'b}))
+  (is (= (s-renaming ''a 'b) false))
+  (is (= (s-renaming '(P x y) '(P y x)) {'x 'y, 'y 'x}))
+  (is (= (s-renaming '(P x y) '(P x x)) false))
+  (is (= (s-renaming '(P x x) '(P x y)) false)))
