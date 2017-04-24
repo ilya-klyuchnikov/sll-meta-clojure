@@ -54,8 +54,8 @@
      ((g-b (T) x) = x)
      ; idle function for tests
      ((g-zero (Zero) x) = x)
-     ((g-zero (Succ n) x) = (g-zero n (F)))
-     ))
+     ((g-zero (Succ n) x) = (g-zero n (F)))))
+
 
 (def prog
   (parse-program s-prog))
