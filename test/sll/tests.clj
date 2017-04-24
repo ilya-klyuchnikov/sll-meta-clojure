@@ -13,4 +13,4 @@
   (is (= (parse-expr ''a) (->Atom 'a)))
   (is (= (parse-expr '(f a 'b)) (->FCall 'f (list (->Var 'a) (->Atom 'b)))))
   (is (thrown? AssertionError (parse-expr '())))
-  (is (= (parse-expr '(f-f)) (->FCall 'f-f '(list)))))
+  (is (= (parse-expr '(f-f)) (->FCall 'f-f (list)))))
