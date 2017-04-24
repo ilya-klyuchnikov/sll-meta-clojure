@@ -14,3 +14,42 @@
   (is (= (parse-expr '(f a 'b)) (->FCall 'f (list (->Var 'a) (->Atom 'b)))))
   (is (thrown? AssertionError (parse-expr '())))
   (is (= (parse-expr '(f-f)) (->FCall 'f-f (list)))))
+
+(def s-prog
+  '(
+     ((f-main xs ys) = (g-append xs ys))
+     ((g-flatten (Leaf x)) = (Cons x (Nil)))
+     ((g-flatten (Node lt x rt)) = (g-append (g-flatten lt) (Cons x (g-flatten rt))))
+     ; list concatenation
+     ((g-append (Nil) ys) = ys)
+     ((g-append (Cons x xs) ys) = (Cons x (g-append xs ys)))
+     ; equality over char (A|B)
+     ((g-eq (A) s) = (g-eq-A s))
+     ((g-eq (B) s) = (g-eq-B s))
+     ((g-eq-A (A)) = (T))
+     ((g-eq-A (B)) = (F))
+     ((g-eq-B (A)) = (F))
+     ((g-eq-B (B)) = (T))
+     ; equality over 2 lists
+     ((g-eq-list (Nil) l2) = (g-eq-list-nil l2))
+     ((g-eq-list (Cons x xs) l2) = (g-eq-list-cons l2 x xs))
+     ((g-eq-list-cons (Nil) x xs) = (F))
+     ((g-eq-list-cons (Cons y ys) x xs) = (g-&& (g-eq x y) (g-eq-list xs ys)))
+     ((g-eq-list-nil (Nil)) = (T))
+     ((g-eq-list-nil (Cons x xs)) = (F))
+     ; boolean and (short-circuit and)
+     ((g-&& (F) b) = (F))
+     ((g-&& (T) b) = b)
+     ; total &
+     ((g-& (F) b) = (g-b b (F)))
+     ((g-& (T) b) = (g-b b b))
+     ; dummy function - just to enforce pattern matching
+     ((g-b (F) x) = x)
+     ((g-b (T) x) = x)
+     ; idle function for tests
+     ((g-zero (Zero) x) = x)
+     ((g-zero (Succ n) x) = (g-zero n (F)))
+     ))
+
+(def prog
+  (parse-program s-prog))
