@@ -299,3 +299,36 @@
           ren1 (zipmap vns1 vns2)
           ren2 (zipmap vns2 vns1)]
       (and (= ren1 (map-invert ren2)) (= ren2 (map-invert ren1)) ren1))))
+
+;--------------------------------------------------------------------------------------------
+; process tree
+;--------------------------------------------------------------------------------------------
+
+(defrecord Process-edge-transient [info tree])
+(defrecord Process-edge-decompose [name trees])
+(defrecord Process-edge-variants [variants])
+
+(defrecord Process-node [id expr edge])
+(defrecord Process-leaf [id expr])
+
+(defn build-process-tree [prog expr]
+  (let [stepper (perfect-meta-stepper prog)]
+    (letfn [(build [expr id]
+              (let [step (stepper expr)]
+                (cond
+
+                  (instance? Step-stop step)
+                  (->Process-leaf id (:expr step))
+
+                  (instance? Step-transient step)
+                  (->Process-node id expr (->Process-edge-transient (:info step) (build (:expr step) (cons 0 id))))
+
+                  (instance? Step-variants step)
+                  (->Process-node id expr (->Process-edge-variants
+                                            (map-indexed (fn [i [x y]] [x (build y (cons i id))]) (:variants step))))
+
+                  (instance? Step-decompose step)
+                  (->Process-node id expr (->Process-edge-decompose
+                                            (:name step)
+                                            (map-indexed (fn [i e] (build e (cons i id))) (:exprs step)))))))]
+      (build expr '()))))

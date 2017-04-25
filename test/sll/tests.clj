@@ -1,6 +1,7 @@
 (ns sll.tests
   (:require [clojure.test :refer :all]
-            [sll.core :refer :all]))
+            [sll.core :refer :all]
+            [clojure.pprint :refer [pprint]]))
 
 (deftest prefix-test
   (is (prefix? '() '()))
@@ -93,7 +94,15 @@
 (defn s-meta-step [s-expr] ((meta-stepper prog) (parse-expr s-expr)))
 (defn s-perfect-meta-step [s-expr] ((perfect-meta-stepper prog) (parse-expr s-expr)))
 
-(println (s-meta-step '(Nil)))
-(println (s-meta-step '(g-append x y)))
-(println (s-meta-step '(g-append x x)))
-(println (s-perfect-meta-step '(g-append x x)))
+(pprint (s-meta-step '(Nil)))
+(pprint (s-meta-step '(g-append x y)))
+(pprint (s-meta-step '(g-append x x)))
+(pprint (s-perfect-meta-step '(g-append x x)))
+
+(defn s-build-process-tree [s-expr]
+  (build-process-tree prog (parse-expr s-expr)))
+
+(pprint (s-build-process-tree '(Nil)))
+(pprint (s-build-process-tree '(Cons a b)))
+(pprint (s-build-process-tree '(g-append (Nil) b)))
+(pprint (s-build-process-tree '(g-eq x y)))
