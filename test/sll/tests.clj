@@ -89,3 +89,11 @@
          '(Nil)))
   (is (= (s-eval '(g-append (Cons 'a (Cons 'b (Nil))) (Cons 'c (Cons 'd (Nil)))))
          '(Cons 'a (Cons 'b (Cons 'c (Cons 'd (Nil))))))))
+
+(defn s-meta-step [s-expr] ((meta-stepper prog) (parse-expr s-expr)))
+(defn s-perfect-meta-step [s-expr] ((perfect-meta-stepper prog) (parse-expr s-expr)))
+
+(println (s-meta-step '(Nil)))
+(println (s-meta-step '(g-append x y)))
+(println (s-meta-step '(g-append x x)))
+(println (s-perfect-meta-step '(g-append x x)))
