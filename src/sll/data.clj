@@ -8,36 +8,11 @@
   (stub [exp])
   (vnames [exp]))
 
-; terms
-(defrecord Var [name]
-  Syntax-Operations
-  (subst [e s] (if (contains? s name) (get s name) e))
-  (stub [e] (->Var '_))
-  (vnames [e] (list name)))
+(defprotocol Map-Results
+  (map-result [step f]))
 
-(defrecord Atom [val]
-  Syntax-Operations
-  (subst [e s] e)
-  (stub [e] e)
-  (vnames [e] (list)))
-
-(defrecord Ctr [name args]
-  Syntax-Operations
-  (subst [e s] (->Ctr name (map subst args)))
-  (stub [e] (->Ctr name (map stub args)))
-  (vnames [e] (apply concat (map vnames args))))
-
-(defrecord FCall [name args]
-  Syntax-Operations
-  (subst [e s] (->FCall name (map subst args)))
-  (stub [e] (->FCall name (map stub args)))
-  (vnames [e] (apply concat (map vnames args))))
-
-(defrecord GCall [name args]
-  Syntax-Operations
-  (subst [e s] (->GCall name (map subst args)))
-  (stub [e] (->GCall name (map stub args)))
-  (vnames [e] (apply concat (map vnames args))))
+(defprotocol Eval-Step
+  (step [expr prog]))
 
 (defprotocol DefLookup
   "lookup of definitions in a program"
@@ -45,40 +20,33 @@
   (is-g [d n])
   (is-g-pat [d n p-n]))
 
-(defrecord Pat [name vars])
-
 (defrecord FDef [name args body]
   DefLookup
-  (is-f [d n] (= (n name)))
+  (is-f [d n] (= n name))
   (is-g [d n] false)
   (is-g-pat [d n p-n] false))
-
+(defrecord Pat [name vars])
 (defrecord GDef [name pat args body]
   DefLookup
   (is-f [d n] false)
-  (is-g [d n] (= (n name)))
+  (is-g [d n] (= n name))
   (is-g-pat [d n p-n] (and (= n name) (= p-n (:name pat)))))
-
 (defrecord Program [defs])
 
-; unfold of f-function
+
+(defn program-fdef [program f-name]
+  (first (filter (fn [d] (is-f d f-name)) program)))
+
+(defn program-gdefs [program g-name]
+  (seq (filter (fn [d] (is-g d g-name)) program)))
+
+(defn program-gdef [program g-name ctr-name]
+  (first (filter (fn [d] (is-g-pat d g-name ctr-name)) program)))
+
 (defrecord Unfold [])
-; constructor match
 (defrecord Ctr-match [cname])
 
-(defprotocol Map-Results
-  (map-result [step f]))
-
-; step
-(defrecord Step-transient [info expr]
-  Map-Results
-  (map-result [step f] (->Step-transient info (f expr))))
-
-(defrecord Step-stop [expr])
-(defrecord Step-decompose [name exprs])
-(defrecord Step-variants [variants]
-  Map-Results
-  (map-result [step f] (->Step-variants (map (fn [v] (list (first v) (f (second v))))))))
+;--------------------------------------------------------------------------------------------
 
 (defrecord Edge-transient [info tree])
 (defrecord Edge-decompose [name trees])
@@ -86,6 +54,122 @@
 
 (defrecord Node [expr edge])
 (defrecord Leaf [expr])
+
+; step = (stepper expr)
+(defrecord Step-transient [info expr]
+  Map-Results
+  (map-result [step f] (->Step-transient info (f expr))))
+
+(defrecord Step-variants [variants]
+  Map-Results
+  (map-result [step f] (->Step-variants (map (fn [v] (list (first v) (f (second v))))))))
+(defrecord Step-stop [expr])
+(defrecord Step-decompose [name exprs])
+
+;--------------------------------------------------------------------------------------------
+
+(defprotocol Unparse
+  (unparse [e]))
+
+(extend-protocol Unparse
+  nil
+  (unparse [_] nil))
+
+(defrecord Var [name]
+  Syntax-Operations
+  (subst [e s] (if (contains? s name) (get s name) e))
+  (stub [e] (->Var '_))
+  (vnames [e] (list name))
+  Unparse
+  (unparse [e] name))
+
+(defrecord Atom [val]
+  Syntax-Operations
+  (subst [e s] e)
+  (stub [e] e)
+  (vnames [e] (list))
+  Eval-Step
+  (step [e p] (->Step-stop e))
+  Unparse
+  (unparse [e] (list 'quote val)))
+
+(defrecord Ctr [name args]
+  Syntax-Operations
+  (subst [e s] (->Ctr name (map (fn [e] (subst e s)) args)))
+  (stub [e] (->Ctr name (map stub args)))
+  (vnames [e] (apply concat (map vnames args)))
+  Eval-Step
+  (step [e p]
+    (do
+    (if (empty? args)
+      (->Step-stop e)
+      (->Step-decompose name args))))
+  Unparse
+  (unparse [e] (cons name (map unparse args))))
+
+(defrecord FCall [name args]
+  Syntax-Operations
+  (subst [e s] (->FCall name (map (fn [e] (subst e s)) args)))
+  (stub [e] (->FCall name (map stub args)))
+  (vnames [e] (apply concat (map vnames args)))
+  Eval-Step
+  (step [e p]
+    (let [f (program-fdef p name)]
+      (->Step-transient (->Unfold) (subst (:body f) (zipmap (:args f) args)))))
+  Unparse
+  (unparse [e] (cons name (map unparse args))))
+
+(defrecord GCall [name args]
+  Syntax-Operations
+  (subst [e s] (->GCall name (map (fn [e] (subst e s)) args)))
+  (stub [e] (->GCall name (map stub args)))
+  (vnames [e] (apply concat (map vnames args)))
+  Eval-Step
+  (step [e p]
+    (if
+      (instance? Ctr (first args))
+      ; TODO: destructuring
+      (let [c (first args)
+            c-name (:name c)
+            g-args (rest args)
+            c-args (:args c)
+            g-def (program-gdef p name c-name)
+            g-pat (:pat g-def)
+            g-vs (:args g-def)
+            p-vs (:vars g-pat)
+            g-body (:body g-def)
+            s (zipmap (concat p-vs g-vs) (concat c-args g-args))]
+        (->Step-transient (->Ctr-match c-name) (subst g-body s)))
+      (let [arg (first args)
+            args (rest args)
+            inner-step (step arg p)]
+        (map-result inner-step (fn [e] (->GCall name (cons e args)))))))
+  Unparse
+  (unparse [e] (cons name (map unparse args))))
+
+;--------------------------------------------------------------------------------------------
+
+(defn eval-stepper [prog] (fn [e] (step e prog)))
+
+(defn build-eval-tree [prog expr]
+  (let [stepper (eval-stepper prog)]
+    (letfn [(build [e]
+              (let [step (stepper e)]
+                (cond
+                  (instance? Step-stop step) (->Leaf (:expr step))
+                  (instance? Step-transient step) (->Node e (->Edge-transient (:info step) (build (:expr step))))
+                  (instance? Step-decompose step) (->Node e (->Edge-decompose (:name step) (map build (:exprs step)))))))]
+      (build expr))))
+
+(defn eval-tree [tree]
+  (cond
+    (instance? Leaf tree) (:expr tree)
+    (instance? Node tree) (let [edge (:edge tree)]
+                            (cond
+                              (instance? Edge-transient edge) (eval-tree (:tree edge))
+                              (instance? Edge-decompose edge) (->Ctr (:name edge) (map eval-tree (:trees edge)))))))
+
+;--------------------------------------------------------------------------------------------
 
 (defn mk-subst [names vals]
   (zipmap names vals))
@@ -98,16 +182,6 @@
 
 (defn map-values [f sub]
   (zipmap (keys sub) (map f (vals sub))))
-
-
-(defn program-fdef [program f-name]
-  (first (filter (fn [d] (is-f d f-name)) program)))
-
-(defn program-gdefs [program g-name]
-  (filter (fn [d] (is-g d g-name)) program))
-
-(defn program-gdef [program g-name ctr-name]
-  (filter (fn [d] (is-g-pat d g-name ctr-name)) program))
 
 (defn mk-vars [vn n]
   (map (fn [i] (str vn '. (+1 i))) (range n)))

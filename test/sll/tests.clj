@@ -54,7 +54,8 @@
      ((g-b (T) x) = x)
      ; idle function for tests
      ((g-zero (Zero) x) = x)
-     ((g-zero (Succ n) x) = (g-zero n (F)))))
+     ((g-zero (Succ n) x) = (g-zero n (F)))
+     ((f-id x) = x)))
 
 
 (def prog
@@ -69,3 +70,23 @@
   (is (= (s-renaming '(P x y) '(P y x)) {'x 'y, 'y 'x}))
   (is (= (s-renaming '(P x y) '(P x x)) false))
   (is (= (s-renaming '(P x x) '(P x y)) false)))
+
+(defn s-eval-tree [s-expr]
+  (build-eval-tree prog (parse-expr s-expr)))
+
+(defn s-eval [s-expr]
+  (unparse (eval-tree (s-eval-tree s-expr))))
+
+(deftest eval-test
+  (is (= (s-eval '(Nil))
+         '(Nil)))
+  (is (= (s-eval '(Cons 'a (Nil)))
+         '(Cons 'a (Nil))))
+  (is (= (s-eval '(g-append (Cons (g-eq (A) (A)) (Nil)) (Nil)) )
+         '(Cons (T) (Nil))))
+  (is (= (s-eval '(f-id (g-append (Cons (g-eq (A) (A)) (Nil)) (Nil))))
+         '(Cons (T) (Nil))))
+  (is (= (s-eval '(g-append (g-append (Nil) (Nil)) (Nil)))
+         '(Nil)))
+  (is (= (s-eval '(g-append (Cons 'a (Cons 'b (Nil))) (Cons 'c (Cons 'd (Nil)))))
+         '(Cons 'a (Cons 'b (Cons 'c (Cons 'd (Nil))))))))
