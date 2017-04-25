@@ -1,7 +1,6 @@
 (ns sll.tests
   (:require [clojure.test :refer :all]
-            [sll.data :refer :all]
-            [sll.parse :refer :all]))
+            [sll.core :refer :all]))
 
 (deftest prefix-test
   (is (prefix? '() '()))
