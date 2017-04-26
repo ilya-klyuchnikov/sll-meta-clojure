@@ -65,7 +65,7 @@
 
 (defrecord Step-variants [variants]
   Map-Results
-  (map-result [step f] (->Step-variants (map (fn [v] [(first v) (f (second v))])))))
+  (map-result [step f] (->Step-variants (map (fn [v] [(first v) (f (second v))]) variants))))
 (defrecord Step-stop [expr])
 (defrecord Step-decompose [name exprs])
 
@@ -166,7 +166,7 @@
       (->Step-variants (map (partial scrutinize args) (program-gdefs p name)))
       :else (let [arg (first args)
                   args (rest args)
-                  inner-step (meta-step e p)]
+                  inner-step (meta-step arg p)]
               (map-result inner-step (fn [e] (->GCall name (cons e args)))))))
   Unparse
   (unparse [e] (cons name (map unparse args))))
@@ -332,3 +332,35 @@
                                             (:name step)
                                             (map-indexed (fn [i e] (build e (cons i id))) (:exprs step)))))))]
       (build expr '()))))
+
+;--------------------------------------------------------------------------------------------
+; URA
+;--------------------------------------------------------------------------------------------
+
+(defn ura [prog in out]
+  (let [tree (build-process-tree prog in)]
+    (letfn [(traverse [queue]
+              (if (empty? queue)
+                '()
+                (let [p (first queue)
+                      queue (rest queue)
+                      subst (first p)
+                      tree (second p)]
+                  (cond
+                    (and (instance? Process-leaf tree) (= out (:expr tree)))
+                    (cons subst (traverse queue))
+
+                    (instance? Process-leaf tree)
+                    (traverse queue)
+
+                    (instance? Process-node tree)
+                    (let [edge (:edge tree)]
+                      (cond
+                        (instance? Process-edge-transient edge)
+                        (traverse (concat queue (list [subst (:tree edge)])))
+
+                        (instance? Process-edge-variants edge)
+                        (let [delta (map (fn [[s t]] [(remap subst s) t]) (:variants edge))]
+                          (traverse (concat queue delta)))))))))]
+
+      (traverse (list [(id-subst in) tree])))))

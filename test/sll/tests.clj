@@ -106,3 +106,42 @@
 (pprint (s-build-process-tree '(Cons a b)))
 (pprint (s-build-process-tree '(g-append (Nil) b)))
 (pprint (s-build-process-tree '(g-eq x y)))
+
+(defn s-ura [s-in s-out]
+  (map (fn [s] (map-values unparse s)) (ura prog (parse-expr s-in) (parse-expr s-out))))
+
+(deftest ura-tests
+  (is (= (s-ura '(g-eq (A) (A)) '(F))
+         '()))
+  (is (= (s-ura '(g-eq (A) (A)) '(T))
+         '({})))
+  (is (= (s-ura '(g-eq x (A)) '(T))
+         '({x (A)})))
+  (is (= (s-ura '(g-eq (A) x) '(T))
+         '({x (A)})))
+  (is (= (s-ura '(g-eq x x) '(T))
+         '({x (A)} {x (B)})))
+  (is (= (s-ura '(g-eq x x) '(F))
+         '()))
+  (is (= (s-ura '(g-eq x y) '(T))
+         '({x (A), y (A)} {x (B), y (B)})))
+  (is (= (s-ura '(g-eq x y) '(F))
+         '({x (A), y (B)} {x (B), y (A)})))
+  (is (= (s-ura '(g-&& (g-eq x y) (g-eq x z)) '(F))
+         '({x (A), y (B), z z}
+            {x (B), y (A), z z}
+            {x (A), y (A), z (B)}
+            {x (B), y (B), z (A)})))
+  (is (= (s-ura '(g-& (g-eq x y) (g-eq x z)) '(F))
+         '({x (A), y (B), z (A)}
+            {x (A), y (B), z (B)}
+            {x (B), y (A), z (A)}
+            {x (B), y (A), z (B)}
+            {x (A), y (A), z (B)}
+            {x (B), y (B), z (A)})))
+  (is (= (s-ura '(g-eq-list (g-append x y) (Nil)) '(T))
+         '({x (Nil), y (Nil)})))
+
+  (is (= (s-ura '(g-eq-list (g-append x y) (Cons (A) (Nil))) '(T))
+         '({x (Nil), y (Cons (A) (Nil))}
+            {y (Nil), x (Cons (A) (Nil))}))))
