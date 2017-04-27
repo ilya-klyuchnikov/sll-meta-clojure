@@ -1,7 +1,6 @@
 (ns sll.tests
   (:require [clojure.test :refer :all]
-            [sll.core :refer :all]
-            [clojure.pprint :refer [pprint]]))
+            [sll.core :refer :all]))
 
 (deftest prefix-test
   (is (prefix? '() '()))
@@ -57,7 +56,6 @@
      ((g-zero (Succ n) x) = (g-zero n (F)))
      ((f-id x) = x)))
 
-
 (def prog
   (parse-program s-prog))
 
@@ -90,22 +88,6 @@
          '(Nil)))
   (is (= (s-eval '(g-append (Cons 'a (Cons 'b (Nil))) (Cons 'c (Cons 'd (Nil)))))
          '(Cons 'a (Cons 'b (Cons 'c (Cons 'd (Nil))))))))
-
-(defn s-meta-step [s-expr] ((meta-stepper prog) (parse-expr s-expr)))
-(defn s-perfect-meta-step [s-expr] ((perfect-meta-stepper prog) (parse-expr s-expr)))
-
-(pprint (s-meta-step '(Nil)))
-(pprint (s-meta-step '(g-append x y)))
-(pprint (s-meta-step '(g-append x x)))
-(pprint (s-perfect-meta-step '(g-append x x)))
-
-(defn s-build-process-tree [s-expr]
-  (build-process-tree prog (parse-expr s-expr)))
-
-(pprint (s-build-process-tree '(Nil)))
-(pprint (s-build-process-tree '(Cons a b)))
-(pprint (s-build-process-tree '(g-append (Nil) b)))
-(pprint (s-build-process-tree '(g-eq x y)))
 
 (defn s-ura [s-in s-out]
   (map (fn [s] (map-values unparse s)) (ura prog (parse-expr s-in) (parse-expr s-out))))
