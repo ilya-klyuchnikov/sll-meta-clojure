@@ -142,18 +142,10 @@
   (step [e p]
     (if
       (instance? Ctr (first args))
-      ; TODO: destructuring
-      (let [c (first args)
-            c-name (:name c)
-            g-args (rest args)
-            c-args (:args c)
-            g-def (program-gdef p name c-name)
-            g-pat (:pat g-def)
-            g-vs (:args g-def)
-            p-vs (:vars g-pat)
-            g-body (:body g-def)
-            s (zipmap (concat p-vs g-vs) (concat c-args g-args))]
-        (->Step-transient (->Ctr-match c-name) (subst g-body s)))
+      (let [[{c-name :name c-args :args} & g-args] args
+            {{p-vs :vars} :pat g-vs :args g-body :body} (program-gdef p name c-name)
+            p (zipmap (concat p-vs g-vs) (concat c-args g-args))]
+        (->Step-transient (->Ctr-match c-name) (subst g-body p)))
       (let [arg (first args)
             args (rest args)
             inner-step (step arg p)]
