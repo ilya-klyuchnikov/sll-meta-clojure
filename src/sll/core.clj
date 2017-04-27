@@ -55,8 +55,9 @@
 (defrecord Edge-decompose [name trees])
 (defrecord Edge-variants [variants])
 
-(defrecord Node [expr edge])
-(defrecord Leaf [expr])
+(defrecord Eval-Node [expr edge])
+(defrecord Eval-Leaf [expr])
+
 
 (defrecord Step-transient [info expr]
   Map-Results
@@ -237,15 +238,15 @@
     (letfn [(build [e]
               (let [step (stepper e)]
                 (cond
-                  (instance? Step-stop step) (->Leaf (:expr step))
-                  (instance? Step-transient step) (->Node e (->Edge-transient (:info step) (build (:expr step))))
-                  (instance? Step-decompose step) (->Node e (->Edge-decompose (:name step) (map build (:exprs step)))))))]
+                  (instance? Step-stop step) (->Eval-Leaf (:expr step))
+                  (instance? Step-transient step) (->Eval-Node e (->Edge-transient (:info step) (build (:expr step))))
+                  (instance? Step-decompose step) (->Eval-Node e (->Edge-decompose (:name step) (map build (:exprs step)))))))]
       (build expr))))
 
 (defn eval-tree [tree]
   (cond
-    (instance? Leaf tree) (:expr tree)
-    (instance? Node tree) (let [edge (:edge tree)]
+    (instance? Eval-Leaf tree) (:expr tree)
+    (instance? Eval-Node tree) (let [edge (:edge tree)]
                             (cond
                               (instance? Edge-transient edge) (eval-tree (:tree edge))
                               (instance? Edge-decompose edge) (->Ctr (:name edge) (map eval-tree (:trees edge)))))))
@@ -311,7 +312,9 @@
                   (instance? Step-decompose step)
                   (->Process-node id expr (->Process-edge-decompose
                                             (:name step)
-                                            (map-indexed (fn [i e] (build e (cons i id))) (:exprs step)))))))]
+                                            (map-indexed
+                                              (fn [i e] (build e (cons i id)))
+                                              (:exprs step)))))))]
       (build expr '()))))
 
 ;--------------------------------------------------------------------------------------------
@@ -342,6 +345,9 @@
 
                         (instance? Process-edge-variants edge)
                         (let [delta (map (fn [[s t]] [(remap subst s) t]) (:variants edge))]
-                          (traverse (concat queue delta)))))))))]
+                          (traverse (concat queue delta)))
+
+                        :else
+                        (assert false (str "unexpected " (type edge)))))))))]
 
       (traverse (list [(id-subst in) tree])))))

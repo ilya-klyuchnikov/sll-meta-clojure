@@ -112,6 +112,18 @@
   (is (= (s-eval '(g-append (Cons 'a (Cons 'b (Nil))) (Cons 'c (Cons 'd (Nil)))))
          '(Cons 'a (Cons 'b (Cons 'c (Cons 'd (Nil))))))))
 
+(defn s-build-process-tree [expr]
+  (build-process-tree prog (parse-expr expr)))
+
+(deftest process-tree-test
+  (is (=
+        (s-build-process-tree '(Nil))
+        (->Process-leaf '() (parse-expr '(Nil)))))
+  (is (=
+        (s-build-process-tree '(W a))
+        (->Process-node '() (parse-expr '(W a))
+                        (->Process-edge-decompose 'W (list (->Process-leaf '(0) (parse-expr 'a))))))))
+
 (defn s-ura [s-in s-out]
   (map (fn [s] (map-values unparse s)) (ura prog (parse-expr s-in) (parse-expr s-out))))
 
@@ -124,6 +136,9 @@
          '()))
   (is (= (s-ura '(g-eq (A) (A)) '(F))
          '()))
+  
+  (is (thrown? AssertionError (s-ura '(W (A) (A)) '(F))))
+
   (is (= (s-ura '(g-eq (A) (A)) '(T))
          '({})))
   (is (= (s-ura '(g-eq x (A)) '(T))
