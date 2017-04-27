@@ -4,7 +4,7 @@
 
 ; terms
 (defprotocol Syntax-Operations
-  (subst [exp s])
+  (apply-subst [exp s])
   (stub [exp])
   (vnames [exp]))
 
@@ -79,7 +79,7 @@
 
 (defrecord Var [name]
   Syntax-Operations
-  (subst [e s] (if (contains? s name) (get s name) e))
+  (apply-subst [e s] (if (contains? s name) (get s name) e))
   (stub [e] (->Var '_))
   (vnames [e] (list name))
   Meta-Eval-Step
@@ -89,7 +89,7 @@
 
 (defrecord Atom [val]
   Syntax-Operations
-  (subst [e s] e)
+  (apply-subst [e s] e)
   (stub [e] e)
   (vnames [e] (list))
   Eval-Step
@@ -101,7 +101,7 @@
 
 (defrecord Ctr [name args]
   Syntax-Operations
-  (subst [e s] (->Ctr name (map (fn [e] (subst e s)) args)))
+  (apply-subst [e s] (->Ctr name (map (fn [e] (apply-subst e s)) args)))
   (stub [e] (->Ctr name (map stub args)))
   (vnames [e] (apply concat (map vnames args)))
   Eval-Step
@@ -117,13 +117,13 @@
 
 (defrecord FCall [name args]
   Syntax-Operations
-  (subst [e s] (->FCall name (map (fn [e] (subst e s)) args)))
+  (apply-subst [e s] (->FCall name (map (fn [e] (apply-subst e s)) args)))
   (stub [e] (->FCall name (map stub args)))
   (vnames [e] (apply concat (map vnames args)))
   Eval-Step
   (eval-step [e p]
     (let [f (program-fdef p name)]
-      (->Step-transient (->Unfold) (subst (:body f) (zipmap (:args f) args)))))
+      (->Step-transient (->Unfold) (apply-subst (:body f) (zipmap (:args f) args)))))
   Meta-Eval-Step
   (meta-eval-step [e p] (eval-step e p))
   Unparse
@@ -131,7 +131,7 @@
 
 (defrecord GCall [name args]
   Syntax-Operations
-  (subst [e s] (->GCall name (map (fn [e] (subst e s)) args)))
+  (apply-subst [e s] (->GCall name (map (fn [e] (apply-subst e s)) args)))
   (stub [e] (->GCall name (map stub args)))
   (vnames [e] (apply concat (map vnames args)))
   Eval-Step
@@ -141,7 +141,7 @@
       (let [[{c-name :name c-args :args} & g-args] args
             {{p-vs :vars} :pat g-vs :args g-body :body} (program-gdef p name c-name)
             p (zipmap (concat p-vs g-vs) (concat c-args g-args))]
-        (->Step-transient (->Ctr-match c-name) (subst g-body p)))
+        (->Step-transient (->Ctr-match c-name) (apply-subst g-body p)))
       (let [arg (first args)
             args (rest args)
             inner-step (eval-step arg p)]
@@ -160,16 +160,11 @@
   (unparse [e] (cons name (map unparse args))))
 
 (defn scrutinize [g-args g-def]
-  (let [v (:name (first g-args))
-       args (rest g-args)
-       pat (:pat g-def)
-       params (:args g-def)
-       body (:body g-def)
-       ctr-name (:name pat)
-       ctr-params (:vars pat)
-       fresh-vars (mk-vars v (count ctr-params))
-       sub (zipmap (concat ctr-params params) (concat fresh-vars args))]
-    [{v (->Ctr ctr-name fresh-vars)} (subst body sub)]))
+  (let [[{v :name} & args] g-args
+        {{ctr-name :name ctr-params :vars} :pat params :args body :body} g-def
+        fresh-vars (mk-vars v (count ctr-params))
+        sub (zipmap (concat ctr-params params) (concat fresh-vars args))]
+    [{v (->Ctr ctr-name fresh-vars)} (apply-subst body sub)]))
 
 ;--------------------------------------------------------------------------------------------
 ; PARSING
@@ -211,9 +206,11 @@
         fgname (first lhs)
         params (rest lhs)
         fg (first (name fgname))]
-    (cond
-      (= fg \f) (->FDef fgname params body)
-      (= fg \g) (->GDef fgname (parse-pat (first params)) (rest params) body))))
+      (if
+        (= fg \g)
+        (->GDef fgname (parse-pat (first params)) (rest params) body)
+        (do (assert (= fg \f) "function name should start with `f` or 'g'")
+            (->FDef fgname params body) ))))
 
 (defn parse-program
   "parses a program represented as a collection of definitions"
@@ -231,7 +228,7 @@
     (letfn [(perfect-step [e]
               (let [inner-step (stepper e)]
                 (if (instance? Step-variants inner-step)
-                  (->Step-variants (map (fn [vr] (let [[sub e] vr] [sub, (subst e sub)])) (:variants inner-step)))
+                  (->Step-variants (map (fn [vr] (let [[sub e] vr] [sub, (apply-subst e sub)])) (:variants inner-step)))
                   inner-step)))]
       perfect-step)))
 
@@ -257,7 +254,7 @@
 
 ; ///
 (defn remap [sub1 sub2]
-  (zipmap (keys sub1) (map (fn [k] (subst k sub2)) (vals sub1))))
+  (zipmap (keys sub1) (map (fn [k] (apply-subst k sub2)) (vals sub1))))
 
 (defn map-values [f sub]
   (zipmap (keys sub) (map f (vals sub))))

@@ -62,13 +62,16 @@
 (def prog
   (parse-program s-prog))
 
+(deftest parse-assert-test
+  (is (thrown? AssertionError (first (parse-program '(((x xs ys) = (x xs ys))))))))
+
 (defn s-renaming [s-exp1 s-exp2]
   (renaming (parse-expr s-exp1) (parse-expr s-exp2)))
 
 (defn s-subst [s-expr s-subst]
   (let [expr (parse-expr s-expr)
         s (map-values parse-expr s-subst)]
-    (unparse (subst expr s))))
+    (unparse (apply-subst expr s))))
 
 (deftest subst-test
   (is (= (s-subst 'a {}) 'a))
@@ -96,6 +99,8 @@
 (deftest eval-test
   (is (= (s-eval '(Nil))
          '(Nil)))
+  (is (= (s-eval '(Cons 'a (Nil)))
+         '(Cons 'a (Nil))))
   (is (= (s-eval '(Cons 'a (Nil)))
          '(Cons 'a (Nil))))
   (is (= (s-eval '(g-append (Cons (g-eq (A) (A)) (Nil)) (Nil)) )
