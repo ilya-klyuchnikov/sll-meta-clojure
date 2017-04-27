@@ -12,10 +12,10 @@
   (map-result [step f]))
 
 (defprotocol Eval-Step
-  (step [expr prog]))
+  (eval-step [expr prog]))
 
 (defprotocol Meta-Eval-Step
-  (meta-step [expr prog]))
+  (meta-eval-step [expr prog]))
 
 (defprotocol DefLookup
   "lookup of definitions in a program"
@@ -58,7 +58,6 @@
 (defrecord Node [expr edge])
 (defrecord Leaf [expr])
 
-; step = (stepper expr)
 (defrecord Step-transient [info expr]
   Map-Results
   (map-result [step f] (->Step-transient info (f expr))))
@@ -66,6 +65,7 @@
 (defrecord Step-variants [variants]
   Map-Results
   (map-result [step f] (->Step-variants (map (fn [v] [(first v) (f (second v))]) variants))))
+
 (defrecord Step-stop [expr])
 (defrecord Step-decompose [name exprs])
 
@@ -83,7 +83,7 @@
   (stub [e] (->Var '_))
   (vnames [e] (list name))
   Meta-Eval-Step
-  (meta-step [e p] (->Step-stop e))
+  (meta-eval-step [e p] (->Step-stop e))
   Unparse
   (unparse [e] name))
 
@@ -93,9 +93,9 @@
   (stub [e] e)
   (vnames [e] (list))
   Eval-Step
-  (step [e p] (->Step-stop e))
+  (eval-step [e p] (->Step-stop e))
   Meta-Eval-Step
-  (meta-step [e p] (step e p))
+  (meta-eval-step [e p] (eval-step e p))
   Unparse
   (unparse [e] (list 'quote val)))
 
@@ -105,13 +105,13 @@
   (stub [e] (->Ctr name (map stub args)))
   (vnames [e] (apply concat (map vnames args)))
   Eval-Step
-  (step [e p]
+  (eval-step [e p]
     (do
     (if (empty? args)
       (->Step-stop e)
       (->Step-decompose name args))))
   Meta-Eval-Step
-  (meta-step [e p] (step e p))
+  (meta-eval-step [e p] (eval-step e p))
   Unparse
   (unparse [e] (cons name (map unparse args))))
 
@@ -121,11 +121,11 @@
   (stub [e] (->FCall name (map stub args)))
   (vnames [e] (apply concat (map vnames args)))
   Eval-Step
-  (step [e p]
+  (eval-step [e p]
     (let [f (program-fdef p name)]
       (->Step-transient (->Unfold) (subst (:body f) (zipmap (:args f) args)))))
   Meta-Eval-Step
-  (meta-step [e p] (step e p))
+  (meta-eval-step [e p] (eval-step e p))
   Unparse
   (unparse [e] (cons name (map unparse args))))
 
@@ -135,7 +135,7 @@
   (stub [e] (->GCall name (map stub args)))
   (vnames [e] (apply concat (map vnames args)))
   Eval-Step
-  (step [e p]
+  (eval-step [e p]
     (if
       (instance? Ctr (first args))
       (let [[{c-name :name c-args :args} & g-args] args
@@ -144,17 +144,17 @@
         (->Step-transient (->Ctr-match c-name) (subst g-body p)))
       (let [arg (first args)
             args (rest args)
-            inner-step (step arg p)]
+            inner-step (eval-step arg p)]
         (map-result inner-step (fn [e] (->GCall name (cons e args)))))))
   Meta-Eval-Step
-  (meta-step [e p]
+  (meta-eval-step [e p]
     (cond
-      (instance? Ctr (first args)) (step e p)
+      (instance? Ctr (first args)) (eval-step e p)
       (instance? Var (first args))
       (->Step-variants (map (partial scrutinize args) (program-gdefs p name)))
       :else (let [arg (first args)
                   args (rest args)
-                  inner-step (meta-step arg p)]
+                  inner-step (meta-eval-step arg p)]
               (map-result inner-step (fn [e] (->GCall name (cons e args)))))))
   Unparse
   (unparse [e] (cons name (map unparse args))))
@@ -223,8 +223,8 @@
 
 ;--------------------------------------------------------------------------------------------
 
-(defn eval-stepper [prog] (fn [e] (step e prog)))
-(defn meta-stepper [prog] (fn [e] (meta-step e prog)))
+(defn eval-stepper [prog] (fn [e] (eval-step e prog)))
+(defn meta-stepper [prog] (fn [e] (meta-eval-step e prog)))
 
 (defn perfect-meta-stepper [prog]
   (let [stepper (meta-stepper prog)]
