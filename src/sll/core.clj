@@ -179,10 +179,12 @@
   "parses an expression"
   [s-expr]
   (cond
-    (symbol? s-expr) (->Var s-expr)
-    (seq? s-expr)
+    (symbol? s-expr)
+    (->Var s-expr)
+
+    :else
     (do
-      (assert (not (empty? s-expr)) "unknow form")
+      (assert (and (list? s-expr) (not (empty? s-expr))) "unknow form")
       (if
         (and (= 'quote (first s-expr)) (symbol? (second s-expr)))
         (->Atom (second s-expr))
@@ -193,8 +195,7 @@
           (cond
             (= f-g-c \f) (->FCall rator args)
             (= f-g-c \g) (->GCall rator args)
-            :else (->Ctr rator args)))))
-    :else (assert false "unknown form")))
+            :else (->Ctr rator args)))))))
 
 (defn parse-pat
   "parses a pattern of a g-definition"
