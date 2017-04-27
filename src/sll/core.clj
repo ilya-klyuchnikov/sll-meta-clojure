@@ -326,10 +326,7 @@
     (letfn [(traverse [queue]
               (if (empty? queue)
                 '()
-                (let [p (first queue)
-                      queue (rest queue)
-                      subst (first p)
-                      tree (second p)]
+                (let [[[subst tree] & queue] queue]
                   (cond
                     (and (instance? Process-leaf tree) (= out (:expr tree)))
                     (cons subst (traverse queue))

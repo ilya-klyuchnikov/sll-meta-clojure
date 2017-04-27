@@ -136,7 +136,7 @@
          '()))
   (is (= (s-ura '(g-eq (A) (A)) '(F))
          '()))
-  
+
   (is (thrown? AssertionError (s-ura '(W (A) (A)) '(F))))
 
   (is (= (s-ura '(g-eq (A) (A)) '(T))
