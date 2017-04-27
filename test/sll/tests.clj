@@ -62,10 +62,25 @@
 (defn s-renaming [s-exp1 s-exp2]
   (renaming (parse-expr s-exp1) (parse-expr s-exp2)))
 
+(defn s-subst [s-expr s-subst]
+  (let [expr (parse-expr s-expr)
+        s (map-values parse-expr s-subst)]
+    (unparse (subst expr s))))
+
+(deftest subst-test
+  (is (= (s-subst 'a {}) 'a))
+  (is (= (s-subst ''a {}) ''a))
+  (is (= (s-subst '(ff x y) {}) '(ff x y)))
+  (is (= (s-subst '(ff x y) '{x 'a, y 'b}) '(ff 'a 'b)))
+  (is (= (s-subst '(gg x y) '{x 'a, y 'b}) '(gg 'a 'b)))
+  (is (= (s-subst '(Ctr x y) '{x 'a, y 'b}) '(Ctr 'a 'b))))
+
 (deftest renaming-test
   (is (= (s-renaming 'a 'b) {'a 'b}))
   (is (= (s-renaming ''a 'b) false))
   (is (= (s-renaming '(P x y) '(P y x)) {'x 'y, 'y 'x}))
+  (is (= (s-renaming '(g x y) '(g y x)) {'x 'y, 'y 'x}))
+  (is (= (s-renaming '(f x y) '(f y x)) {'x 'y, 'y 'x}))
   (is (= (s-renaming '(P x y) '(P x x)) false))
   (is (= (s-renaming '(P x x) '(P x y)) false)))
 
@@ -93,6 +108,12 @@
   (map (fn [s] (map-values unparse s)) (ura prog (parse-expr s-in) (parse-expr s-out))))
 
 (deftest ura-tests
+  (is (= (s-ura ''a ''a)
+         '({})))
+  (is (= (s-ura '(f-id 'a) ''a)
+         '({})))
+  (is (= (s-ura '(f-id x) 'a)
+         '()))
   (is (= (s-ura '(g-eq (A) (A)) '(F))
          '()))
   (is (= (s-ura '(g-eq (A) (A)) '(T))
@@ -123,7 +144,8 @@
             {x (B), y (B), z (A)})))
   (is (= (s-ura '(g-eq-list (g-append x y) (Nil)) '(T))
          '({x (Nil), y (Nil)})))
-
+  (is (= (s-ura '(g-eq-list (f-main x y) (Nil)) '(T))
+         '({x (Nil), y (Nil)})))
   (is (= (s-ura '(g-eq-list (g-append x y) (Cons (A) (Nil))) '(T))
          '({x (Nil), y (Cons (A) (Nil))}
             {y (Nil), x (Cons (A) (Nil))}))))

@@ -77,10 +77,6 @@
 (defprotocol Unparse
   (unparse [e]))
 
-(extend-protocol Unparse
-  nil
-  (unparse [_] nil))
-
 (defrecord Var [name]
   Syntax-Operations
   (subst [e s] (if (contains? s name) (get s name) e))
@@ -258,14 +254,9 @@
 
 ;--------------------------------------------------------------------------------------------
 
-(defn mk-subst [names vals]
-  (zipmap names vals))
-(def empty-subst {})
-
 ; ///
 (defn remap [sub1 sub2]
   (zipmap (keys sub1) (map (fn [k] (subst k sub2)) (vals sub1))))
-
 
 (defn map-values [f sub]
   (zipmap (keys sub) (map f (vals sub))))
