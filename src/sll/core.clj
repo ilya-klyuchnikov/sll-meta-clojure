@@ -104,13 +104,12 @@
   Syntax-Operations
   (apply-subst [e s] (->Ctr name (map (fn [e] (apply-subst e s)) args)))
   (stub [e] (->Ctr name (map stub args)))
-  (vnames [e] (apply concat (map vnames args)))
+  (vnames [e] (mapcat vnames args))
   Eval-Step
   (eval-step [e p]
-    (do
     (if (empty? args)
       (->Step-stop e)
-      (->Step-decompose name args))))
+      (->Step-decompose name args)))
   Meta-Eval-Step
   (meta-eval-step [e p] (eval-step e p))
   Unparse
@@ -120,7 +119,7 @@
   Syntax-Operations
   (apply-subst [e s] (->FCall name (map (fn [e] (apply-subst e s)) args)))
   (stub [e] (->FCall name (map stub args)))
-  (vnames [e] (apply concat (map vnames args)))
+  (vnames [e] (mapcat vnames args))
   Eval-Step
   (eval-step [e p]
     (let [f (program-fdef p name)]
@@ -134,7 +133,7 @@
   Syntax-Operations
   (apply-subst [e s] (->GCall name (map (fn [e] (apply-subst e s)) args)))
   (stub [e] (->GCall name (map stub args)))
-  (vnames [e] (apply concat (map vnames args)))
+  (vnames [e] (mapcat vnames args))
   Eval-Step
   (eval-step [e p]
     (if
@@ -180,7 +179,7 @@
 
     :else
     (do
-      (assert (and (list? s-expr) (not (empty? s-expr))) "unknow form")
+      (assert (and (list? s-expr) (seq s-expr)) "unknow form")
       (if
         (and (= 'quote (first s-expr)) (symbol? (second s-expr)))
         (->Atom (second s-expr))
@@ -261,7 +260,7 @@
   (zipmap (keys sub) (map f (vals sub))))
 
 (defn mk-vars [vn n]
-  (map (fn [i] (->Var (str vn '. (+ 1 i)))) (range n)))
+  (map (fn [i] (->Var (str vn '. (inc i)))) (range n)))
 
 (defn id-subst [e]
   (into {} (map (fn [n] [n (->Var n)]) (vnames e))))
