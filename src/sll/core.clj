@@ -50,22 +50,18 @@
   "build an evaluation tree from steps"
   (grow-eval-tree [step prog expr]))
 
-(defrecord Unfold [])
-(defrecord Ctr-match [cname])
-
-(defrecord Edge-transient [info tree])
+(defrecord Edge-transient [tree])
 (defrecord Edge-decompose [name trees])
-(defrecord Edge-variants [variants])
 
 (defrecord Eval-Node [expr edge])
 (defrecord Eval-Leaf [expr])
 
-(defrecord Step-transient [info expr]
+(defrecord Step-transient [expr]
   Map-Results
-  (map-result [step f] (->Step-transient info (f expr)))
+  (map-result [step f] (->Step-transient (f expr)))
   EvalTree
   (grow-eval-tree [_ prog orig-expr] (->Eval-Node orig-expr
-                                                  (->Edge-transient info (grow-eval-tree (eval-step expr prog) prog expr)))))
+                                                  (->Edge-transient (grow-eval-tree (eval-step expr prog) prog expr)))))
 
 (defrecord Step-variants [variants]
   Map-Results
@@ -131,7 +127,7 @@
   Eval-Step
   (eval-step [e p]
     (let [{body :body params :args} (program-fdef p name)]
-      (->Step-transient (->Unfold) (apply-subst body (zipmap params args)))))
+      (->Step-transient (apply-subst body (zipmap params args)))))
   Meta-Eval-Step
   (meta-eval-step [e p] (eval-step e p))
   Unparse
@@ -149,7 +145,7 @@
       (let [[{c-name :name c-args :args} & g-args] args
             {{p-vs :vars} :pat g-vs :args g-body :body} (program-gdef p name c-name)
             p (zipmap (concat p-vs g-vs) (concat c-args g-args))]
-        (->Step-transient (->Ctr-match c-name) (apply-subst g-body p)))
+        (->Step-transient (apply-subst g-body p)))
       (let [[arg & args] args
             inner-step (eval-step arg p)]
         (map-result inner-step (fn [e] (->GCall name (cons e args)))))))
