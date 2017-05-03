@@ -47,14 +47,12 @@
   (unparse [e]))
 
 (defn remap [sub1 sub2]
-  (zipmap (keys sub1) (map (fn [k] (apply-subst k sub2)) (vals sub1))))
+  (zipmap (keys sub1) (map #(apply-subst %1 sub2) (vals sub1))))
 
-(defn meta-stepper [prog] (fn [e] (meta-eval-step e prog)))
+(defn meta-stepper [prog] #(meta-eval-step %1 prog))
 
 (defn perfect-meta-stepper [prog]
   #(mk-perfect ((meta-stepper prog) %1)))
-
-;------------
 
 (defrecord FDef [name args body]
   DefLookup
@@ -70,13 +68,13 @@
 (defrecord Program [defs])
 
 (defn program-fdef [program f-name]
-  (first (filter (fn [d] (is-f d f-name)) program)))
+  (first (filter #(is-f %1 f-name) program)))
 
 (defn program-gdefs [program g-name]
-  (seq (filter (fn [d] (is-g d g-name)) program)))
+  (seq (filter #(is-g %1 g-name) program)))
 
 (defn program-gdef [program g-name ctr-name]
-  (first (filter (fn [d] (is-g-pat d g-name ctr-name)) program)))
+  (first (filter #(is-g-pat %1 g-name ctr-name) program)))
 
 (defrecord URA-Step [answer delta])
 
@@ -110,14 +108,14 @@
 
 (defrecord Step-variants [variants]
   Map-Results
-  (map-result [step f] (->Step-variants (map (fn [v] [(first v) (f (second v))]) variants)))
+  (map-result [step f] (->Step-variants (map (fn [[subst e]] [subst (f e)]) variants)))
   BuildProcessTree
   (grow-process-tree [_ prog orig-expr id] (->Process-node-variants
                                              id
                                              orig-expr
                                              (map-indexed (fn [i [ptr expr]] [ptr (grow-process-tree ((perfect-meta-stepper prog) expr) prog expr (cons i id))]) variants)))
   BuildPerfectProcessTree
-  (mk-perfect [_] (->Step-variants (map (fn [vr] (let [[sub e] vr] [sub, (apply-subst e sub)])) variants))))
+  (mk-perfect [_] (->Step-variants (map (fn [[sub e]] [sub, (apply-subst e sub)]) variants))))
 
 (defrecord Step-stop [expr]
   BuildEvalTree
@@ -127,7 +125,7 @@
 
 (defrecord Step-decompose [exprs compose]
   BuildEvalTree
-  (grow-eval-tree [_ prog orig-expr] (->Eval-Node-Decompose orig-expr (map (fn [e] (grow-eval-tree (eval-step e prog) prog e)) exprs) compose)))
+  (grow-eval-tree [_ prog orig-expr] (->Eval-Node-Decompose orig-expr (map #(grow-eval-tree (eval-step %1 prog) prog %1) exprs) compose)))
 
 (defrecord Var [name]
   Syntax-Operations
@@ -153,14 +151,14 @@
 
 (defrecord Ctr [name args]
   Syntax-Operations
-  (apply-subst [e s] (->Ctr name (map (fn [e] (apply-subst e s)) args)))
+  (apply-subst [e s] (->Ctr name (map #(apply-subst %1 s) args)))
   (stub [e] (->Ctr name (map stub args)))
   (vnames [e] (mapcat vnames args))
   Eval-Step
   (eval-step [e p]
     (if (empty? args)
       (->Step-stop e)
-      (->Step-decompose args (fn [es] (->Ctr name es)))))
+      (->Step-decompose args #(->Ctr name %1))))
   Meta-Eval-Step
   (meta-eval-step [e p] (eval-step e p))
   Unparse
@@ -168,7 +166,7 @@
 
 (defrecord FCall [name args]
   Syntax-Operations
-  (apply-subst [e s] (->FCall name (map (fn [e] (apply-subst e s)) args)))
+  (apply-subst [e s] (->FCall name (map #(apply-subst %1 s) args)))
   (stub [e] (->FCall name (map stub args)))
   (vnames [e] (mapcat vnames args))
   Eval-Step
@@ -181,7 +179,7 @@
   (unparse [e] (cons name (map unparse args))))
 
 (defn mk-vars [vn n]
-  (map (fn [i] (->Var (str vn '. (inc i)))) (range n)))
+  (map #(->Var (str vn '. (inc %1))) (range n)))
 (defn scrutinize [g-args g-def]
   (let [[{v :name} & args] g-args
         {{ctr-name :name ctr-params :vars} :pat params :args body :body} g-def
@@ -191,7 +189,7 @@
 
 (defrecord GCall [name args]
   Syntax-Operations
-  (apply-subst [e s] (->GCall name (map (fn [e] (apply-subst e s)) args)))
+  (apply-subst [e s] (->GCall name (map #(apply-subst %1 s) args)))
   (stub [e] (->GCall name (map stub args)))
   (vnames [e] (mapcat vnames args))
   Eval-Step
@@ -203,7 +201,7 @@
             p (zipmap (concat p-vs g-vs) (concat c-args g-args))]
         (->Step-transient (apply-subst g-body p)))
       (let [[arg & args] args]
-        (map-result (eval-step arg p) (fn [e] (->GCall name (cons e args)))))))
+        (map-result (eval-step arg p) #(->GCall name (cons %1 args))))))
   Meta-Eval-Step
   (meta-eval-step [e p]
     (cond
@@ -212,7 +210,7 @@
       (->Step-variants (map (partial scrutinize args) (program-gdefs p name)))
       :else (let [[arg & args] args
                   inner-step (meta-eval-step arg p)]
-              (map-result inner-step (fn [e] (->GCall name (cons e args)))))))
+              (map-result inner-step #(->GCall name (cons %1 args))))))
   Unparse
   (unparse [e] (cons name (map unparse args))))
 
