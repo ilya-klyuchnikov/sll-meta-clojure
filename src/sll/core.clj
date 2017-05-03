@@ -2,7 +2,6 @@
   (:gen-class)
   (:require [clojure.set :refer [map-invert]]))
 
-; terms
 (defprotocol Syntax-Operations
   (apply-subst [exp s])
   (stub [exp])
@@ -264,12 +263,10 @@
           ren2 (zipmap vns2 vns1)]
       (and (= ren1 (map-invert ren2)) (= ren2 (map-invert ren1)) ren1))))
 
-(defrecord Process-edge-transient [info tree])
-(defrecord Process-edge-decompose [name trees])
-(defrecord Process-edge-variants [variants])
-
-(defrecord Process-node [id expr edge])
 (defrecord Process-leaf [id expr])
+(defrecord Process-node-transient [id expr info tree])
+(defrecord Process-node-decompose [id expr name trees])
+(defrecord Process-node-variants  [id expr variants])
 
 (defn build-process-tree [prog expr]
   (let [stepper (perfect-meta-stepper prog)]
@@ -281,18 +278,14 @@
                   (->Process-leaf id (:expr step))
 
                   (instance? Step-transient step)
-                  (->Process-node id expr (->Process-edge-transient (:info step) (build (:expr step) (cons 0 id))))
+                  (->Process-node-transient id expr (:info step) (build (:expr step) (cons 0 id)))
 
                   (instance? Step-variants step)
-                  (->Process-node id expr (->Process-edge-variants
-                                            (map-indexed (fn [i [x y]] [x (build y (cons i id))]) (:variants step))))
+                  (->Process-node-variants id expr (map-indexed (fn [i [x y]] [x (build y (cons i id))]) (:variants step)))
 
                   (instance? Step-decompose step)
-                  (->Process-node id expr (->Process-edge-decompose
-                                            (:name step)
-                                            (map-indexed
-                                              (fn [i e] (build e (cons i id)))
-                                              (:exprs step)))))))]
+                  (->Process-node-decompose id expr (:name step) (map-indexed (fn [i e] (build e (cons i id))) (:exprs step))))))]
+
       (build expr '()))))
 
 (defn ura [prog in out]
@@ -308,17 +301,14 @@
                     (instance? Process-leaf tree)
                     (traverse queue)
 
-                    (instance? Process-node tree)
-                    (let [edge (:edge tree)]
-                      (cond
-                        (instance? Process-edge-transient edge)
-                        (traverse (concat queue (list [subst (:tree edge)])))
+                    (instance? Process-node-transient tree)
+                    (traverse (concat queue (list [subst (:tree tree)])))
 
-                        (instance? Process-edge-variants edge)
-                        (let [delta (map (fn [[s t]] [(remap subst s) t]) (:variants edge))]
-                          (traverse (concat queue delta)))
+                    (instance? Process-node-variants tree)
+                    (let [delta (map (fn [[s t]] [(remap subst s) t]) (:variants tree))]
+                      (traverse (concat queue delta)))
 
-                        :else
-                        (assert false (str "unexpected " (type edge)))))))))]
+                    :else
+                    (assert false (str "unexpected " (type tree)))))))]
 
       (traverse (list [(id-subst in) tree])))))

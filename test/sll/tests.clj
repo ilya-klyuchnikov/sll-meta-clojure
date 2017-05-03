@@ -121,8 +121,8 @@
         (->Process-leaf '() (parse-expr '(Nil)))))
   (is (=
         (s-build-process-tree '(W a))
-        (->Process-node '() (parse-expr '(W a))
-                        (->Process-edge-decompose 'W (list (->Process-leaf '(0) (parse-expr 'a))))))))
+        (->Process-node-decompose '() (parse-expr '(W a))
+                         'W (list (->Process-leaf '(0) (parse-expr 'a)))))))
 
 (defn s-ura [s-in s-out]
   (map (fn [s] (map-values unparse s)) (ura prog (parse-expr s-in) (parse-expr s-out))))
