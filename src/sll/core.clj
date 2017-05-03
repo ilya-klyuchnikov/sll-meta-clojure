@@ -19,9 +19,9 @@
 
 (defprotocol DefLookup
   "lookup of definitions in a program"
-  (is-f [d n])
-  (is-g [d n])
-  (is-g-pat [d n p-n]))
+  (is-f [def name] "whether a `def` is an f-definition with name `name`")
+  (is-g [def name] "whether a `def` is a g-definition with name `name`")
+  (is-g-pat [def name ctr-name] "whether a `def` is a g-definition with name `name` for `ctr-name`"))
 
 (defrecord FDef [name args body]
   DefLookup
@@ -46,6 +46,10 @@
 (defn program-gdef [program g-name ctr-name]
   (first (filter (fn [d] (is-g-pat d g-name ctr-name)) program)))
 
+(defprotocol EvalTree
+  "build an evaluation tree from steps"
+  (grow-eval-tree [step prog expr]))
+
 (defrecord Unfold [])
 (defrecord Ctr-match [cname])
 
@@ -56,17 +60,25 @@
 (defrecord Eval-Node [expr edge])
 (defrecord Eval-Leaf [expr])
 
-
 (defrecord Step-transient [info expr]
   Map-Results
-  (map-result [step f] (->Step-transient info (f expr))))
+  (map-result [step f] (->Step-transient info (f expr)))
+  EvalTree
+  (grow-eval-tree [_ prog orig-expr] (->Eval-Node orig-expr
+                                                  (->Edge-transient info (grow-eval-tree (eval-step expr prog) prog expr)))))
 
 (defrecord Step-variants [variants]
   Map-Results
   (map-result [step f] (->Step-variants (map (fn [v] [(first v) (f (second v))]) variants))))
 
-(defrecord Step-stop [expr])
-(defrecord Step-decompose [name exprs])
+(defrecord Step-stop [expr]
+  EvalTree
+  (grow-eval-tree [_ _ _] (->Eval-Leaf expr)))
+
+(defrecord Step-decompose [name exprs]
+  EvalTree
+  (grow-eval-tree [_ prog orig-expr] (->Eval-Node orig-expr
+                                                  (->Edge-decompose name (map (fn [e] (grow-eval-tree (eval-step e prog) prog e)) exprs)) )) )
 
 (def scrutinize)
 (def mk-vars)
@@ -207,7 +219,6 @@
   [s-prog]
   (map parse-def s-prog))
 
-(defn eval-stepper [prog] (fn [e] (eval-step e prog)))
 (defn meta-stepper [prog] (fn [e] (meta-eval-step e prog)))
 
 (defn perfect-meta-stepper [prog]
@@ -220,14 +231,7 @@
       perfect-step)))
 
 (defn build-eval-tree [prog expr]
-  (let [stepper (eval-stepper prog)]
-    (letfn [(build [e]
-              (let [step (stepper e)]
-                (cond
-                  (instance? Step-stop step) (->Eval-Leaf (:expr step))
-                  (instance? Step-transient step) (->Eval-Node e (->Edge-transient (:info step) (build (:expr step))))
-                  (instance? Step-decompose step) (->Eval-Node e (->Edge-decompose (:name step) (map build (:exprs step)))))))]
-      (build expr))))
+  (grow-eval-tree (eval-step expr prog) prog expr))
 
 (defn eval-tree [tree]
   (cond
