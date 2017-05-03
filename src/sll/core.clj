@@ -65,8 +65,6 @@
 (defn program-gdef [program g-name ctr-name]
   (first (filter (fn [d] (is-g-pat d g-name ctr-name)) program)))
 
-(def ->Ctr)
-
 (defrecord URA-Step [answer delta])
 
 (defrecord Process-leaf [id expr]
@@ -86,9 +84,9 @@
 (defrecord Eval-Node-Transient [expr tree]
   EvalEvalTree
   (eval-tree [_] (eval-tree tree)))
-(defrecord Eval-Node-Decompose [expr name trees]
+(defrecord Eval-Node-Decompose [expr trees compose]
   EvalEvalTree
-  (eval-tree [_] (->Ctr name (map eval-tree trees))))
+  (eval-tree [_] (compose (map eval-tree trees))))
 
 (defn perfect-meta-stepper [prog])
 
@@ -115,9 +113,9 @@
   BuildProcessTree
   (grow-process-tree [_ _ _ id] (->Process-leaf id expr)))
 
-(defrecord Step-decompose [name exprs]
+(defrecord Step-decompose [exprs compose]
   BuildEvalTree
-  (grow-eval-tree [_ prog orig-expr] (->Eval-Node-Decompose orig-expr name (map (fn [e] (grow-eval-tree (eval-step e prog) prog e)) exprs)))
+  (grow-eval-tree [_ prog orig-expr] (->Eval-Node-Decompose orig-expr (map (fn [e] (grow-eval-tree (eval-step e prog) prog e)) exprs) compose))
   BuildProcessTree
   (grow-process-tree [_ prog orig-expr id]
     (->Process-node-decompose id orig-expr name (map-indexed (fn [i e] (grow-process-tree ((perfect-meta-stepper prog) e) prog e (cons i id))) exprs))))
@@ -156,7 +154,7 @@
   (eval-step [e p]
     (if (empty? args)
       (->Step-stop e)
-      (->Step-decompose name args)))
+      (->Step-decompose args (fn [es] (->Ctr name es)))))
   Meta-Eval-Step
   (meta-eval-step [e p] (eval-step e p))
   Unparse
