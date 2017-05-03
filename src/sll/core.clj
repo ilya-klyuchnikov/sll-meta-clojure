@@ -49,10 +49,8 @@
 (defn remap [sub1 sub2]
   (zipmap (keys sub1) (map #(apply-subst %1 sub2) (vals sub1))))
 
-(defn meta-stepper [prog] #(meta-eval-step %1 prog))
-
-(defn perfect-meta-stepper [prog]
-  #(mk-perfect ((meta-stepper prog) %1)))
+(defn perfect-meta-stepper [prog e]
+  (mk-perfect (meta-eval-step e prog)))
 
 (defrecord FDef [name args body]
   DefLookup
@@ -104,16 +102,18 @@
   BuildEvalTree
   (grow-eval-tree [_ prog orig-expr] (->Eval-Node-Transient orig-expr (grow-eval-tree (eval-step expr prog) prog expr)))
   BuildProcessTree
-  (grow-process-tree [_ prog orig-expr id] (->Process-node-transient id orig-expr (grow-process-tree ((perfect-meta-stepper prog) expr) prog expr (cons 0 id)))))
+  (grow-process-tree [_ prog e0 id]
+    (->Process-node-transient id e0 (grow-process-tree (perfect-meta-stepper prog expr) prog expr (cons 0 id)))))
 
 (defrecord Step-variants [variants]
   Map-Results
   (map-result [step f] (->Step-variants (map (fn [[subst e]] [subst (f e)]) variants)))
   BuildProcessTree
-  (grow-process-tree [_ prog orig-expr id] (->Process-node-variants
-                                             id
-                                             orig-expr
-                                             (map-indexed (fn [i [ptr expr]] [ptr (grow-process-tree ((perfect-meta-stepper prog) expr) prog expr (cons i id))]) variants)))
+  (grow-process-tree [_ prog e0 id]
+    (->Process-node-variants
+      id
+      e0
+      (map-indexed (fn [i [ptr e]] [ptr (grow-process-tree (perfect-meta-stepper prog e) prog e (cons i id))]) variants)))
   BuildPerfectProcessTree
   (mk-perfect [_] (->Step-variants (map (fn [[sub e]] [sub, (apply-subst e sub)]) variants))))
 
@@ -125,7 +125,8 @@
 
 (defrecord Step-decompose [exprs compose]
   BuildEvalTree
-  (grow-eval-tree [_ prog orig-expr] (->Eval-Node-Decompose orig-expr (map #(grow-eval-tree (eval-step %1 prog) prog %1) exprs) compose)))
+  (grow-eval-tree [_ prog orig-expr]
+    (->Eval-Node-Decompose orig-expr (map #(grow-eval-tree (eval-step %1 prog) prog %1) exprs) compose)))
 
 (defrecord Var [name]
   Syntax-Operations
@@ -280,7 +281,7 @@
   (grow-eval-tree (eval-step expr prog) prog expr))
 
 (defn build-process-tree [prog expr]
-  (grow-process-tree ((perfect-meta-stepper prog) expr) prog expr '()))
+  (grow-process-tree (perfect-meta-stepper prog expr) prog expr '()))
 
 (defn ura [prog in out]
     (letfn [(traverse [queue]
