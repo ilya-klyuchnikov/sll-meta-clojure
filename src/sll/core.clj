@@ -86,7 +86,6 @@
 (defrecord Process-node-transient [id expr tree]
   URA
   (ura-step [_ subst out] (->URA-Step nil (list [subst tree]))))
-(defrecord Process-node-decompose [id expr name trees])
 (defrecord Process-node-variants  [id expr variants]
   URA
   (ura-step [_ subst out] (->URA-Step nil (map (fn [[s t]] [(remap subst s) t]) variants))))
@@ -128,10 +127,7 @@
 
 (defrecord Step-decompose [exprs compose]
   BuildEvalTree
-  (grow-eval-tree [_ prog orig-expr] (->Eval-Node-Decompose orig-expr (map (fn [e] (grow-eval-tree (eval-step e prog) prog e)) exprs) compose))
-  BuildProcessTree
-  (grow-process-tree [_ prog orig-expr id]
-    (->Process-node-decompose id orig-expr name (map-indexed (fn [i e] (grow-process-tree ((perfect-meta-stepper prog) e) prog e (cons i id))) exprs))))
+  (grow-eval-tree [_ prog orig-expr] (->Eval-Node-Decompose orig-expr (map (fn [e] (grow-eval-tree (eval-step e prog) prog e)) exprs) compose)))
 
 (defrecord Var [name]
   Syntax-Operations
