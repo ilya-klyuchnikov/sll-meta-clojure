@@ -28,6 +28,12 @@
 (defprotocol BuildProcessTree
   "build an evaluation tree from steps"
   (grow-process-tree [step prog expr id]))
+(defprotocol BuildPerfectProcessTree
+  "build an evaluation tree from steps"
+  (mk-perfect [step]))
+(extend-type Object
+  BuildPerfectProcessTree
+  (mk-perfect [step] step))
 
 (defprotocol EvalEvalTree
   "build an evaluation tree from steps"
@@ -42,6 +48,13 @@
 
 (defn remap [sub1 sub2]
   (zipmap (keys sub1) (map (fn [k] (apply-subst k sub2)) (vals sub1))))
+
+(defn meta-stepper [prog] (fn [e] (meta-eval-step e prog)))
+
+(defn perfect-meta-stepper [prog]
+  #(mk-perfect ((meta-stepper prog) %1)))
+
+;------------
 
 (defrecord FDef [name args body]
   DefLookup
@@ -88,8 +101,6 @@
   EvalEvalTree
   (eval-tree [_] (compose (map eval-tree trees))))
 
-(defn perfect-meta-stepper [prog])
-
 (defrecord Step-transient [expr]
   Map-Results
   (map-result [step f] (->Step-transient (f expr)))
@@ -105,7 +116,9 @@
   (grow-process-tree [_ prog orig-expr id] (->Process-node-variants
                                              id
                                              orig-expr
-                                             (map-indexed (fn [i [ptr expr]] [ptr (grow-process-tree ((perfect-meta-stepper prog) expr) prog expr (cons i id))]) variants))))
+                                             (map-indexed (fn [i [ptr expr]] [ptr (grow-process-tree ((perfect-meta-stepper prog) expr) prog expr (cons i id))]) variants)))
+  BuildPerfectProcessTree
+  (mk-perfect [_] (->Step-variants (map (fn [vr] (let [[sub e] vr] [sub, (apply-subst e sub)])) variants))))
 
 (defrecord Step-stop [expr]
   BuildEvalTree
@@ -119,9 +132,6 @@
   BuildProcessTree
   (grow-process-tree [_ prog orig-expr id]
     (->Process-node-decompose id orig-expr name (map-indexed (fn [i e] (grow-process-tree ((perfect-meta-stepper prog) e) prog e (cons i id))) exprs))))
-
-(def scrutinize)
-(def mk-vars)
 
 (defrecord Var [name]
   Syntax-Operations
@@ -174,6 +184,15 @@
   Unparse
   (unparse [e] (cons name (map unparse args))))
 
+(defn mk-vars [vn n]
+  (map (fn [i] (->Var (str vn '. (inc i)))) (range n)))
+(defn scrutinize [g-args g-def]
+  (let [[{v :name} & args] g-args
+        {{ctr-name :name ctr-params :vars} :pat params :args body :body} g-def
+        fresh-vars (mk-vars v (count ctr-params))
+        sub (zipmap (concat ctr-params params) (concat fresh-vars args))]
+    [{v (->Ctr ctr-name fresh-vars)} (apply-subst body sub)]))
+
 (defrecord GCall [name args]
   Syntax-Operations
   (apply-subst [e s] (->GCall name (map (fn [e] (apply-subst e s)) args)))
@@ -187,9 +206,8 @@
             {{p-vs :vars} :pat g-vs :args g-body :body} (program-gdef p name c-name)
             p (zipmap (concat p-vs g-vs) (concat c-args g-args))]
         (->Step-transient (apply-subst g-body p)))
-      (let [[arg & args] args
-            inner-step (eval-step arg p)]
-        (map-result inner-step (fn [e] (->GCall name (cons e args)))))))
+      (let [[arg & args] args]
+        (map-result (eval-step arg p) (fn [e] (->GCall name (cons e args)))))))
   Meta-Eval-Step
   (meta-eval-step [e p]
     (cond
@@ -201,13 +219,6 @@
               (map-result inner-step (fn [e] (->GCall name (cons e args)))))))
   Unparse
   (unparse [e] (cons name (map unparse args))))
-
-(defn scrutinize [g-args g-def]
-  (let [[{v :name} & args] g-args
-        {{ctr-name :name ctr-params :vars} :pat params :args body :body} g-def
-        fresh-vars (mk-vars v (count ctr-params))
-        sub (zipmap (concat ctr-params params) (concat fresh-vars args))]
-    [{v (->Ctr ctr-name fresh-vars)} (apply-subst body sub)]))
 
 (defn parse-expr
   "parses an expression"
@@ -256,22 +267,8 @@
   [s-prog]
   (map parse-def s-prog))
 
-(defn meta-stepper [prog] (fn [e] (meta-eval-step e prog)))
-
-(defn perfect-meta-stepper [prog]
-  (let [stepper (meta-stepper prog)]
-    (letfn [(perfect-step [e]
-              (let [inner-step (stepper e)]
-                (if (instance? Step-variants inner-step)
-                  (->Step-variants (map (fn [vr] (let [[sub e] vr] [sub, (apply-subst e sub)])) (:variants inner-step)))
-                  inner-step)))]
-      perfect-step)))
-
 (defn map-values [f sub]
   (zipmap (keys sub) (map f (vals sub))))
-
-(defn mk-vars [vn n]
-  (map (fn [i] (->Var (str vn '. (inc i)))) (range n)))
 
 (defn id-subst [e]
   (into {} (map (fn [n] [n (->Var n)]) (vnames e))))
