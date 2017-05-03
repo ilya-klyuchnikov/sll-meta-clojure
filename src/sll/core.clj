@@ -47,12 +47,20 @@
 (defprotocol BuildEvalTree
   "build an evaluation tree from steps"
   (grow-eval-tree [step prog expr]))
+(defprotocol BuildProcessTree
+  "build an evaluation tree from steps"
+  (grow-process-tree [step prog expr id]))
 
 (defprotocol EvalEvalTree
   "build an evaluation tree from steps"
   (eval-tree [tree]))
 
 (def ->Ctr)
+
+(defrecord Process-leaf [id expr])
+(defrecord Process-node-transient [id expr tree])
+(defrecord Process-node-decompose [id expr name trees])
+(defrecord Process-node-variants  [id expr variants])
 
 (defrecord Eval-Leaf [expr]
   EvalEvalTree
@@ -64,23 +72,37 @@
   EvalEvalTree
   (eval-tree [_] (->Ctr name (map eval-tree trees))))
 
+(defn perfect-meta-stepper [prog])
+
 (defrecord Step-transient [expr]
   Map-Results
   (map-result [step f] (->Step-transient (f expr)))
   BuildEvalTree
-  (grow-eval-tree [_ prog orig-expr] (->Eval-Node-Transient orig-expr (grow-eval-tree (eval-step expr prog) prog expr))))
+  (grow-eval-tree [_ prog orig-expr] (->Eval-Node-Transient orig-expr (grow-eval-tree (eval-step expr prog) prog expr)))
+  BuildProcessTree
+  (grow-process-tree [_ prog orig-expr id] (->Process-node-transient id orig-expr (grow-process-tree ((perfect-meta-stepper prog) expr) prog expr (cons 0 id)))))
 
 (defrecord Step-variants [variants]
   Map-Results
-  (map-result [step f] (->Step-variants (map (fn [v] [(first v) (f (second v))]) variants))))
+  (map-result [step f] (->Step-variants (map (fn [v] [(first v) (f (second v))]) variants)))
+  BuildProcessTree
+  (grow-process-tree [_ prog orig-expr id] (->Process-node-variants
+                                             id
+                                             orig-expr
+                                             (map-indexed (fn [i [ptr expr]] [ptr (grow-process-tree ((perfect-meta-stepper prog) expr) prog expr (cons i id))]) variants))))
 
 (defrecord Step-stop [expr]
   BuildEvalTree
-  (grow-eval-tree [_ _ _] (->Eval-Leaf expr)))
+  (grow-eval-tree [_ _ _] (->Eval-Leaf expr))
+  BuildProcessTree
+  (grow-process-tree [_ _ _ id] (->Process-leaf id expr)))
 
 (defrecord Step-decompose [name exprs]
   BuildEvalTree
-  (grow-eval-tree [_ prog orig-expr] (->Eval-Node-Decompose orig-expr name (map (fn [e] (grow-eval-tree (eval-step e prog) prog e)) exprs))))
+  (grow-eval-tree [_ prog orig-expr] (->Eval-Node-Decompose orig-expr name (map (fn [e] (grow-eval-tree (eval-step e prog) prog e)) exprs)))
+  BuildProcessTree
+  (grow-process-tree [_ prog orig-expr id]
+    (->Process-node-decompose id orig-expr name (map-indexed (fn [i e] (grow-process-tree ((perfect-meta-stepper prog) e) prog e (cons i id))) exprs))))
 
 (def scrutinize)
 (def mk-vars)
@@ -232,9 +254,6 @@
                   inner-step)))]
       perfect-step)))
 
-(defn build-eval-tree [prog expr]
-  (grow-eval-tree (eval-step expr prog) prog expr))
-
 (defn remap [sub1 sub2]
   (zipmap (keys sub1) (map (fn [k] (apply-subst k sub2)) (vals sub1))))
 
@@ -263,30 +282,11 @@
           ren2 (zipmap vns2 vns1)]
       (and (= ren1 (map-invert ren2)) (= ren2 (map-invert ren1)) ren1))))
 
-(defrecord Process-leaf [id expr])
-(defrecord Process-node-transient [id expr info tree])
-(defrecord Process-node-decompose [id expr name trees])
-(defrecord Process-node-variants  [id expr variants])
+(defn build-eval-tree [prog expr]
+  (grow-eval-tree (eval-step expr prog) prog expr))
 
 (defn build-process-tree [prog expr]
-  (let [stepper (perfect-meta-stepper prog)]
-    (letfn [(build [expr id]
-              (let [step (stepper expr)]
-                (cond
-
-                  (instance? Step-stop step)
-                  (->Process-leaf id (:expr step))
-
-                  (instance? Step-transient step)
-                  (->Process-node-transient id expr (:info step) (build (:expr step) (cons 0 id)))
-
-                  (instance? Step-variants step)
-                  (->Process-node-variants id expr (map-indexed (fn [i [x y]] [x (build y (cons i id))]) (:variants step)))
-
-                  (instance? Step-decompose step)
-                  (->Process-node-decompose id expr (:name step) (map-indexed (fn [i e] (build e (cons i id))) (:exprs step))))))]
-
-      (build expr '()))))
+  (grow-process-tree ((perfect-meta-stepper prog) expr) prog expr '()))
 
 (defn ura [prog in out]
   (let [tree (build-process-tree prog in)]
