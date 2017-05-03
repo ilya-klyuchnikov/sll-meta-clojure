@@ -63,6 +63,9 @@
 (defn s-renaming [s-exp1 s-exp2]
   (renaming (parse-expr s-exp1) (parse-expr s-exp2)))
 
+(defn map-values [f sub]
+  (zipmap (keys sub) (map f (vals sub))))
+
 (defn s-subst [s-expr s-subst]
   (let [expr (parse-expr s-expr)
         s (map-values parse-expr s-subst)]

@@ -2,6 +2,10 @@
   (:gen-class)
   (:require [clojure.set :refer [map-invert]]))
 
+;---------------------------------------------------------
+; Protocols
+;---------------------------------------------------------
+
 (defprotocol Syntax-Operations
   (apply-subst [exp s])
   (stub [exp])
@@ -23,20 +27,20 @@
   (is-g-pat [def name ctr-name] "whether a `def` is a g-definition with name `name` for `ctr-name`"))
 
 (defprotocol BuildEvalTree
-  "build an evaluation tree from steps"
+  "build an evaluation tree via steps"
   (grow-eval-tree [step prog expr]))
 (defprotocol BuildProcessTree
-  "build an evaluation tree from steps"
+  "build a process tree via steps"
   (grow-process-tree [step prog expr id]))
 (defprotocol BuildPerfectProcessTree
-  "build an evaluation tree from steps"
+  "make steps perfect"
   (mk-perfect [step]))
 (extend-type Object
   BuildPerfectProcessTree
   (mk-perfect [step] step))
 
 (defprotocol EvalEvalTree
-  "build an evaluation tree from steps"
+  "evaluate an evaluation tree"
   (eval-tree [tree]))
 
 (defprotocol URA
@@ -44,26 +48,19 @@
   (ura-step [tree subst out] "performs an URA step for a current (first) tree in the queue"))
 
 (defprotocol Unparse
+  "unparses an expression into s-form"
   (unparse [e]))
 
+;---------------------------------------------------------
+; Logic
+;---------------------------------------------------------
+
 (defn remap [sub1 sub2]
+  "apply sub2 to values of sub1"
   (zipmap (keys sub1) (map #(apply-subst %1 sub2) (vals sub1))))
 
 (defn perfect-meta-stepper [prog e]
   (mk-perfect (meta-eval-step e prog)))
-
-(defrecord FDef [name args body]
-  DefLookup
-  (is-f [d n] (= n name))
-  (is-g [d n] false)
-  (is-g-pat [d n p-n] false))
-(defrecord Pat [name vars])
-(defrecord GDef [name pat args body]
-  DefLookup
-  (is-f [d n] false)
-  (is-g [d n] (= n name))
-  (is-g-pat [d n p-n] (and (= n name) (= p-n (:name pat)))))
-(defrecord Program [defs])
 
 (defn program-fdef [program f-name]
   (first (filter #(is-f %1 f-name) program)))
@@ -73,6 +70,12 @@
 
 (defn program-gdef [program g-name ctr-name]
   (first (filter #(is-g-pat %1 g-name ctr-name) program)))
+
+(defn build-eval-tree [prog expr]
+  (grow-eval-tree (eval-step expr prog) prog expr))
+
+(defn build-process-tree [prog expr]
+  (grow-process-tree (perfect-meta-stepper prog expr) prog expr '()))
 
 (defrecord URA-Step [answer delta])
 
@@ -127,6 +130,23 @@
   BuildEvalTree
   (grow-eval-tree [_ prog orig-expr]
     (->Eval-Node-Decompose orig-expr (map #(grow-eval-tree (eval-step %1 prog) prog %1) exprs) compose)))
+
+;---------------------------------------------------------
+; AST
+;---------------------------------------------------------
+
+(defrecord FDef [name args body]
+  DefLookup
+  (is-f [d n] (= n name))
+  (is-g [d n] false)
+  (is-g-pat [d n p-n] false))
+(defrecord Pat [name vars])
+(defrecord GDef [name pat args body]
+  DefLookup
+  (is-f [d n] false)
+  (is-g [d n] (= n name))
+  (is-g-pat [d n p-n] (and (= n name) (= p-n (:name pat)))))
+(defrecord Program [defs])
 
 (defrecord Var [name]
   Syntax-Operations
@@ -207,13 +227,14 @@
   (meta-eval-step [e p]
     (cond
       (instance? Ctr (first args)) (eval-step e p)
-      (instance? Var (first args))
-      (->Step-variants (map (partial scrutinize args) (program-gdefs p name)))
-      :else (let [[arg & args] args
-                  inner-step (meta-eval-step arg p)]
-              (map-result inner-step #(->GCall name (cons %1 args))))))
+      (instance? Var (first args)) (->Step-variants (map (partial scrutinize args) (program-gdefs p name)))
+      :else (let [[arg & args] args] (map-result (meta-eval-step arg p) #(->GCall name (cons %1 args))))))
   Unparse
   (unparse [e] (cons name (map unparse args))))
+
+;---------------------------------------------------------
+; Parsing and unparsing
+;---------------------------------------------------------
 
 (defn parse-expr
   "parses an expression"
@@ -262,9 +283,6 @@
   [s-prog]
   (map parse-def s-prog))
 
-(defn map-values [f sub]
-  (zipmap (keys sub) (map f (vals sub))))
-
 (defn id-subst [e]
   (into {} (map (fn [n] [n (->Var n)]) (vnames e))))
 
@@ -276,12 +294,6 @@
           ren1 (zipmap vns1 vns2)
           ren2 (zipmap vns2 vns1)]
       (and (= ren1 (map-invert ren2)) (= ren2 (map-invert ren1)) ren1))))
-
-(defn build-eval-tree [prog expr]
-  (grow-eval-tree (eval-step expr prog) prog expr))
-
-(defn build-process-tree [prog expr]
-  (grow-process-tree (perfect-meta-stepper prog expr) prog expr '()))
 
 (defn ura [prog in out]
     (letfn [(traverse [queue]
