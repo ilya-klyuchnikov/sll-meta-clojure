@@ -36,7 +36,6 @@
   (is-g-pat [d n p-n] (and (= n name) (= p-n (:name pat)))))
 (defrecord Program [defs])
 
-
 (defn program-fdef [program f-name]
   (first (filter (fn [d] (is-f d f-name)) program)))
 
@@ -46,35 +45,43 @@
 (defn program-gdef [program g-name ctr-name]
   (first (filter (fn [d] (is-g-pat d g-name ctr-name)) program)))
 
-(defprotocol EvalTree
+(defprotocol BuildEvalTree
   "build an evaluation tree from steps"
   (grow-eval-tree [step prog expr]))
 
-(defrecord Edge-transient [tree])
-(defrecord Edge-decompose [name trees])
+(defprotocol EvalEvalTree
+  "build an evaluation tree from steps"
+  (eval-tree [tree]))
 
-(defrecord Eval-Node [expr edge])
-(defrecord Eval-Leaf [expr])
+(def ->Ctr)
+
+(defrecord Eval-Leaf [expr]
+  EvalEvalTree
+  (eval-tree [_] expr))
+(defrecord Eval-Node-Transient [expr tree]
+  EvalEvalTree
+  (eval-tree [_] (eval-tree tree)))
+(defrecord Eval-Node-Decompose [expr name trees]
+  EvalEvalTree
+  (eval-tree [_] (->Ctr name (map eval-tree trees))))
 
 (defrecord Step-transient [expr]
   Map-Results
   (map-result [step f] (->Step-transient (f expr)))
-  EvalTree
-  (grow-eval-tree [_ prog orig-expr] (->Eval-Node orig-expr
-                                                  (->Edge-transient (grow-eval-tree (eval-step expr prog) prog expr)))))
+  BuildEvalTree
+  (grow-eval-tree [_ prog orig-expr] (->Eval-Node-Transient orig-expr (grow-eval-tree (eval-step expr prog) prog expr))))
 
 (defrecord Step-variants [variants]
   Map-Results
   (map-result [step f] (->Step-variants (map (fn [v] [(first v) (f (second v))]) variants))))
 
 (defrecord Step-stop [expr]
-  EvalTree
+  BuildEvalTree
   (grow-eval-tree [_ _ _] (->Eval-Leaf expr)))
 
 (defrecord Step-decompose [name exprs]
-  EvalTree
-  (grow-eval-tree [_ prog orig-expr] (->Eval-Node orig-expr
-                                                  (->Edge-decompose name (map (fn [e] (grow-eval-tree (eval-step e prog) prog e)) exprs)) )) )
+  BuildEvalTree
+  (grow-eval-tree [_ prog orig-expr] (->Eval-Node-Decompose orig-expr name (map (fn [e] (grow-eval-tree (eval-step e prog) prog e)) exprs))))
 
 (def scrutinize)
 (def mk-vars)
@@ -228,14 +235,6 @@
 
 (defn build-eval-tree [prog expr]
   (grow-eval-tree (eval-step expr prog) prog expr))
-
-(defn eval-tree [tree]
-  (cond
-    (instance? Eval-Leaf tree) (:expr tree)
-    (instance? Eval-Node tree) (let [edge (:edge tree)]
-                            (cond
-                              (instance? Edge-transient edge) (eval-tree (:tree edge))
-                              (instance? Edge-decompose edge) (->Ctr (:name edge) (map eval-tree (:trees edge)))))))
 
 (defn remap [sub1 sub2]
   (zipmap (keys sub1) (map (fn [k] (apply-subst k sub2)) (vals sub1))))
