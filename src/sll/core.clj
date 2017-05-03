@@ -49,8 +49,6 @@
 (defrecord Unfold [])
 (defrecord Ctr-match [cname])
 
-;--------------------------------------------------------------------------------------------
-
 (defrecord Edge-transient [info tree])
 (defrecord Edge-decompose [name trees])
 (defrecord Edge-variants [variants])
@@ -69,8 +67,6 @@
 
 (defrecord Step-stop [expr])
 (defrecord Step-decompose [name exprs])
-
-;--------------------------------------------------------------------------------------------
 
 (def scrutinize)
 (def mk-vars)
@@ -122,8 +118,8 @@
   (vnames [e] (mapcat vnames args))
   Eval-Step
   (eval-step [e p]
-    (let [f (program-fdef p name)]
-      (->Step-transient (->Unfold) (apply-subst (:body f) (zipmap (:args f) args)))))
+    (let [{body :body params :args} (program-fdef p name)]
+      (->Step-transient (->Unfold) (apply-subst body (zipmap params args)))))
   Meta-Eval-Step
   (meta-eval-step [e p] (eval-step e p))
   Unparse
@@ -142,8 +138,7 @@
             {{p-vs :vars} :pat g-vs :args g-body :body} (program-gdef p name c-name)
             p (zipmap (concat p-vs g-vs) (concat c-args g-args))]
         (->Step-transient (->Ctr-match c-name) (apply-subst g-body p)))
-      (let [arg (first args)
-            args (rest args)
+      (let [[arg & args] args
             inner-step (eval-step arg p)]
         (map-result inner-step (fn [e] (->GCall name (cons e args)))))))
   Meta-Eval-Step
@@ -152,8 +147,7 @@
       (instance? Ctr (first args)) (eval-step e p)
       (instance? Var (first args))
       (->Step-variants (map (partial scrutinize args) (program-gdefs p name)))
-      :else (let [arg (first args)
-                  args (rest args)
+      :else (let [[arg & args] args
                   inner-step (meta-eval-step arg p)]
               (map-result inner-step (fn [e] (->GCall name (cons e args)))))))
   Unparse
@@ -165,10 +159,6 @@
         fresh-vars (mk-vars v (count ctr-params))
         sub (zipmap (concat ctr-params params) (concat fresh-vars args))]
     [{v (->Ctr ctr-name fresh-vars)} (apply-subst body sub)]))
-
-;--------------------------------------------------------------------------------------------
-; PARSING
-;--------------------------------------------------------------------------------------------
 
 (defn parse-expr
   "parses an expression"
@@ -217,9 +207,6 @@
   [s-prog]
   (map parse-def s-prog))
 
-
-;--------------------------------------------------------------------------------------------
-
 (defn eval-stepper [prog] (fn [e] (eval-step e prog)))
 (defn meta-stepper [prog] (fn [e] (meta-eval-step e prog)))
 
@@ -250,9 +237,6 @@
                               (instance? Edge-transient edge) (eval-tree (:tree edge))
                               (instance? Edge-decompose edge) (->Ctr (:name edge) (map eval-tree (:trees edge)))))))
 
-;--------------------------------------------------------------------------------------------
-
-; ///
 (defn remap [sub1 sub2]
   (zipmap (keys sub1) (map (fn [k] (apply-subst k sub2)) (vals sub1))))
 
@@ -280,10 +264,6 @@
           ren1 (zipmap vns1 vns2)
           ren2 (zipmap vns2 vns1)]
       (and (= ren1 (map-invert ren2)) (= ren2 (map-invert ren1)) ren1))))
-
-;--------------------------------------------------------------------------------------------
-; process tree
-;--------------------------------------------------------------------------------------------
 
 (defrecord Process-edge-transient [info tree])
 (defrecord Process-edge-decompose [name trees])
@@ -315,10 +295,6 @@
                                               (fn [i e] (build e (cons i id)))
                                               (:exprs step)))))))]
       (build expr '()))))
-
-;--------------------------------------------------------------------------------------------
-; URA
-;--------------------------------------------------------------------------------------------
 
 (defn ura [prog in out]
   (let [tree (build-process-tree prog in)]
