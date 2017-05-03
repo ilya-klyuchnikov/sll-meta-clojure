@@ -2,11 +2,6 @@
   (:require [clojure.test :refer :all]
             [sll.core :refer :all]))
 
-(deftest prefix-test
-  (is (prefix? '() '()))
-  (is (prefix? '(2 1) '(3 2 1)))
-  (is (not (prefix? '(3 2 1) '(2 1)))))
-
 (deftest parse-test
   (is (= (parse-expr 'a) (->Var 'a)))
   (is (= (parse-expr ''a) (->Atom 'a)))
@@ -137,7 +132,7 @@
   (is (= (s-ura '(g-eq (A) (A)) '(F))
          '()))
 
-  (is (thrown? AssertionError (s-ura '(W (A) (A)) '(F))))
+  (is (thrown? IllegalArgumentException (s-ura '(W (A) (A)) '(F))))
 
   (is (= (s-ura '(g-eq (A) (A)) '(T))
          '({})))

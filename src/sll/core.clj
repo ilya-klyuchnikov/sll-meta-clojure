@@ -22,6 +22,27 @@
   (is-g [def name] "whether a `def` is a g-definition with name `name`")
   (is-g-pat [def name ctr-name] "whether a `def` is a g-definition with name `name` for `ctr-name`"))
 
+(defprotocol BuildEvalTree
+  "build an evaluation tree from steps"
+  (grow-eval-tree [step prog expr]))
+(defprotocol BuildProcessTree
+  "build an evaluation tree from steps"
+  (grow-process-tree [step prog expr id]))
+
+(defprotocol EvalEvalTree
+  "build an evaluation tree from steps"
+  (eval-tree [tree]))
+
+(defprotocol URA
+  "defs for traversing a process tree"
+  (ura-step [tree subst out] "performs an URA step for a current (first) tree in the queue"))
+
+(defprotocol Unparse
+  (unparse [e]))
+
+(defn remap [sub1 sub2]
+  (zipmap (keys sub1) (map (fn [k] (apply-subst k sub2)) (vals sub1))))
+
 (defrecord FDef [name args body]
   DefLookup
   (is-f [d n] (= n name))
@@ -44,23 +65,20 @@
 (defn program-gdef [program g-name ctr-name]
   (first (filter (fn [d] (is-g-pat d g-name ctr-name)) program)))
 
-(defprotocol BuildEvalTree
-  "build an evaluation tree from steps"
-  (grow-eval-tree [step prog expr]))
-(defprotocol BuildProcessTree
-  "build an evaluation tree from steps"
-  (grow-process-tree [step prog expr id]))
-
-(defprotocol EvalEvalTree
-  "build an evaluation tree from steps"
-  (eval-tree [tree]))
-
 (def ->Ctr)
 
-(defrecord Process-leaf [id expr])
-(defrecord Process-node-transient [id expr tree])
+(defrecord URA-Step [answer delta])
+
+(defrecord Process-leaf [id expr]
+  URA
+  (ura-step [_ subst out] (->URA-Step (if (= expr out) (list subst)) '())))
+(defrecord Process-node-transient [id expr tree]
+  URA
+  (ura-step [_ subst out] (->URA-Step nil (list [subst tree]))))
 (defrecord Process-node-decompose [id expr name trees])
-(defrecord Process-node-variants  [id expr variants])
+(defrecord Process-node-variants  [id expr variants]
+  URA
+  (ura-step [_ subst out] (->URA-Step nil (map (fn [[s t]] [(remap subst s) t]) variants))))
 
 (defrecord Eval-Leaf [expr]
   EvalEvalTree
@@ -106,9 +124,6 @@
 
 (def scrutinize)
 (def mk-vars)
-
-(defprotocol Unparse
-  (unparse [e]))
 
 (defrecord Var [name]
   Syntax-Operations
@@ -254,9 +269,6 @@
                   inner-step)))]
       perfect-step)))
 
-(defn remap [sub1 sub2]
-  (zipmap (keys sub1) (map (fn [k] (apply-subst k sub2)) (vals sub1))))
-
 (defn map-values [f sub]
   (zipmap (keys sub) (map f (vals sub))))
 
@@ -265,13 +277,6 @@
 
 (defn id-subst [e]
   (into {} (map (fn [n] [n (->Var n)]) (vnames e))))
-
-; syntax utilities
-(defn prefix? [path1 path2]
-  (cond
-    (> (count path1) (count path2)) false
-    (= (count path1) (count path2)) (= path1 path2)
-    :else (prefix? path1 (rest path2))))
 
 (defn renaming [e1 e2]
   (and
@@ -289,26 +294,8 @@
   (grow-process-tree ((perfect-meta-stepper prog) expr) prog expr '()))
 
 (defn ura [prog in out]
-  (let [tree (build-process-tree prog in)]
     (letfn [(traverse [queue]
-              (if (empty? queue)
-                '()
-                (let [[[subst tree] & queue] queue]
-                  (cond
-                    (and (instance? Process-leaf tree) (= out (:expr tree)))
-                    (cons subst (traverse queue))
-
-                    (instance? Process-leaf tree)
-                    (traverse queue)
-
-                    (instance? Process-node-transient tree)
-                    (traverse (concat queue (list [subst (:tree tree)])))
-
-                    (instance? Process-node-variants tree)
-                    (let [delta (map (fn [[s t]] [(remap subst s) t]) (:variants tree))]
-                      (traverse (concat queue delta)))
-
-                    :else
-                    (assert false (str "unexpected " (type tree)))))))]
-
-      (traverse (list [(id-subst in) tree])))))
+              (if (empty? queue) '()
+                (let [[[subst tree] & queue] queue {answer :answer delta :delta} (ura-step tree subst out)]
+                  (concat answer (traverse (concat queue delta))))))]
+      (traverse (list [(id-subst in) (build-process-tree prog in)]))))
