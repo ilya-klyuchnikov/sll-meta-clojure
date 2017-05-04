@@ -12,12 +12,6 @@
   (is (thrown? AssertionError (parse-expr '[])))
   (is (= (parse-expr '(f-f)) (->FCall 'f-f (list)))))
 
-(deftest vnames-test
-  (is (= (vnames (parse-expr 'a)) '(a)))
-  (is (= (vnames (parse-expr ''a)) '()))
-  (is (= (vnames (parse-expr '(Ctr a b c))) '(a b c)))
-  (is (= (vnames (parse-expr '(Ctr a b (Ctr a b)))) '(a b a b))))
-
 (def s-prog
   '(
      ((f-main xs ys) = (g-append xs ys))
@@ -60,9 +54,6 @@
 (deftest parse-assert-test
   (is (thrown? AssertionError (first (parse-program '(((x xs ys) = (x xs ys))))))))
 
-(defn s-renaming [s-exp1 s-exp2]
-  (renaming (parse-expr s-exp1) (parse-expr s-exp2)))
-
 (defn map-values [f sub]
   (zipmap (keys sub) (map f (vals sub))))
 
@@ -78,15 +69,6 @@
   (is (= (s-subst '(ff x y) '{x 'a, y 'b}) '(ff 'a 'b)))
   (is (= (s-subst '(gg x y) '{x 'a, y 'b}) '(gg 'a 'b)))
   (is (= (s-subst '(Ctr x y) '{x 'a, y 'b}) '(Ctr 'a 'b))))
-
-(deftest renaming-test
-  (is (= (s-renaming 'a 'b) {'a 'b}))
-  (is (= (s-renaming ''a 'b) false))
-  (is (= (s-renaming '(P x y) '(P y x)) {'x 'y, 'y 'x}))
-  (is (= (s-renaming '(g x y) '(g y x)) {'x 'y, 'y 'x}))
-  (is (= (s-renaming '(f x y) '(f y x)) {'x 'y, 'y 'x}))
-  (is (= (s-renaming '(P x y) '(P x x)) false))
-  (is (= (s-renaming '(P x x) '(P x y)) false)))
 
 (defn s-eval-tree [s-expr]
   (build-eval-tree prog (parse-expr s-expr)))

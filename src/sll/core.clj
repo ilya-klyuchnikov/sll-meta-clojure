@@ -1,6 +1,5 @@
 (ns sll.core
-  (:gen-class)
-  (:require [clojure.set :refer [map-invert]]))
+  (:gen-class))
 
 ;---------------------------------------------------------
 ; Protocols
@@ -8,8 +7,7 @@
 
 (defprotocol Syntax-Operations
   (apply-subst [exp s])
-  (stub [exp])
-  (vnames [exp]))
+  (id-subst [exp]))
 
 (defprotocol Map-Results
   (map-result [step f]))
@@ -76,6 +74,17 @@
 
 (defn build-process-tree [prog expr]
   (grow-process-tree (perfect-meta-stepper prog expr) prog expr '()))
+
+(defn ura [prog in out]
+  (letfn [(traverse [queue]
+            (if (empty? queue) '()
+                               (let [[[subst tree] & queue] queue {answer :answer delta :delta} (ura-step tree subst out)]
+                                 (concat answer (traverse (concat queue delta))))))]
+    (traverse (list [(id-subst in) (build-process-tree prog in)]))))
+
+;---------------------------------------------------------
+; Trees and steps
+;---------------------------------------------------------
 
 (defrecord URA-Step [answer delta])
 
@@ -151,8 +160,7 @@
 (defrecord Var [name]
   Syntax-Operations
   (apply-subst [e s] (if (contains? s name) (get s name) e))
-  (stub [e] (->Var '_))
-  (vnames [e] (list name))
+  (id-subst [e] {name e})
   Meta-Eval-Step
   (meta-eval-step [e p] (->Step-stop e))
   Unparse
@@ -161,8 +169,7 @@
 (defrecord Atom [val]
   Syntax-Operations
   (apply-subst [e s] e)
-  (stub [e] e)
-  (vnames [e] (list))
+  (id-subst [e] {})
   Eval-Step
   (eval-step [e p] (->Step-stop e))
   Meta-Eval-Step
@@ -173,8 +180,7 @@
 (defrecord Ctr [name args]
   Syntax-Operations
   (apply-subst [e s] (->Ctr name (map #(apply-subst %1 s) args)))
-  (stub [e] (->Ctr name (map stub args)))
-  (vnames [e] (mapcat vnames args))
+  (id-subst [_] (apply merge (map id-subst args)))
   Eval-Step
   (eval-step [e p]
     (if (empty? args)
@@ -188,8 +194,7 @@
 (defrecord FCall [name args]
   Syntax-Operations
   (apply-subst [e s] (->FCall name (map #(apply-subst %1 s) args)))
-  (stub [e] (->FCall name (map stub args)))
-  (vnames [e] (mapcat vnames args))
+  (id-subst [_] (apply merge (map id-subst args)))
   Eval-Step
   (eval-step [e p]
     (let [{body :body params :args} (program-fdef p name)]
@@ -211,8 +216,7 @@
 (defrecord GCall [name args]
   Syntax-Operations
   (apply-subst [e s] (->GCall name (map #(apply-subst %1 s) args)))
-  (stub [e] (->GCall name (map stub args)))
-  (vnames [e] (mapcat vnames args))
+  (id-subst [_] (apply merge (map id-subst args)))
   Eval-Step
   (eval-step [e p]
     (if
@@ -266,11 +270,8 @@
 (defn parse-def
   "parses one definition of a program"
   [s-def]
-  (let [lhs (nth s-def 0)
-        rhs (nth s-def 2)
+  (let [[[fgname & params] _ rhs] s-def
         body (parse-expr rhs)
-        fgname (first lhs)
-        params (rest lhs)
         fg (first (name fgname))]
       (if
         (= fg \g)
@@ -282,22 +283,3 @@
   "parses a program represented as a collection of definitions"
   [s-prog]
   (map parse-def s-prog))
-
-(defn id-subst [e]
-  (into {} (map (fn [n] [n (->Var n)]) (vnames e))))
-
-(defn renaming [e1 e2]
-  (and
-    (= (stub e1) (stub e2))
-    (let [vns1 (vnames e1)
-          vns2 (vnames e2)
-          ren1 (zipmap vns1 vns2)
-          ren2 (zipmap vns2 vns1)]
-      (and (= ren1 (map-invert ren2)) (= ren2 (map-invert ren1)) ren1))))
-
-(defn ura [prog in out]
-    (letfn [(traverse [queue]
-              (if (empty? queue) '()
-                (let [[[subst tree] & queue] queue {answer :answer delta :delta} (ura-step tree subst out)]
-                  (concat answer (traverse (concat queue delta))))))]
-      (traverse (list [(id-subst in) (build-process-tree prog in)]))))
