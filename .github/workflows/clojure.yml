@@ -14,3 +14,5 @@ jobs:
       run: lein deps
     - name: Run tests
       run: lein test
+    - name: Check formatting
+      run: lein cljfmt check

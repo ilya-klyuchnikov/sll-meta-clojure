@@ -78,8 +78,8 @@
 (defn ura [prog in out]
   (letfn [(traverse [queue]
             (if (empty? queue) '()
-                               (let [[[subst tree] & queue] queue {answer :answer delta :delta} (ura-step tree subst out)]
-                                 (concat answer (traverse (concat queue delta))))))]
+                (let [[[subst tree] & queue] queue {answer :answer delta :delta} (ura-step tree subst out)]
+                  (concat answer (traverse (concat queue delta))))))]
     (traverse (list [(id-subst in) (build-process-tree prog in)]))))
 
 ;---------------------------------------------------------
@@ -123,9 +123,9 @@
   BuildProcessTree
   (grow-process-tree [_ prog e0 id]
     (->Process-node-variants
-      id
-      e0
-      (map-indexed (fn [i [ptr e]] [ptr (grow-process-tree (perfect-meta-stepper prog e) prog e (cons i id))]) variants)))
+     id
+     e0
+     (map-indexed (fn [i [ptr e]] [ptr (grow-process-tree (perfect-meta-stepper prog e) prog e (cons i id))]) variants)))
   BuildPerfectProcessTree
   (mk-perfect [_] (->Step-variants (map (fn [[sub e]] [sub, (apply-subst e sub)]) variants))))
 
@@ -220,7 +220,7 @@
   Eval-Step
   (eval-step [e p]
     (if
-      (instance? Ctr (first args))
+     (instance? Ctr (first args))
       (let [[{c-name :name c-args :args} & g-args] args
             {{p-vs :vars} :pat g-vs :args g-body :body} (program-gdef p name c-name)
             p (zipmap (concat p-vs g-vs) (concat c-args g-args))]
@@ -251,7 +251,7 @@
     (do
       (assert (and (list? s-expr) (seq s-expr)) "unknow form")
       (if
-        (and (= 'quote (first s-expr)) (symbol? (second s-expr)))
+       (and (= 'quote (first s-expr)) (symbol? (second s-expr)))
         (->Atom (second s-expr))
         (let [rator (first s-expr)
               s-rands (rest s-expr)
@@ -273,11 +273,11 @@
   (let [[[fgname & params] _ rhs] s-def
         body (parse-expr rhs)
         fg (first (name fgname))]
-      (if
-        (= fg \g)
-        (->GDef fgname (parse-pat (first params)) (rest params) body)
-        (do (assert (= fg \f) "function name should start with `f` or 'g'")
-            (->FDef fgname params body) ))))
+    (if
+     (= fg \g)
+      (->GDef fgname (parse-pat (first params)) (rest params) body)
+      (do (assert (= fg \f) "function name should start with `f` or 'g'")
+          (->FDef fgname params body)))))
 
 (defn parse-program
   "parses a program represented as a collection of definitions"
