@@ -1,4 +1,6 @@
 (ns sll.core
+  ; for cloverage - see https://github.com/cloverage/cloverage/issues/318
+  (:require [clojure.core])
   (:gen-class))
 
 ;---------------------------------------------------------
